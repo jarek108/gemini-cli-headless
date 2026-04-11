@@ -14,18 +14,20 @@ To give you a feel for what it is like to work with this Autonomous Developer OS
 ## 🌟 1. Single-Worker Mode (The Flat Project)
 *The simplest scenario, perfect for quick fixes where you don't need complex Git branching.*
 
-**You:** *"Write unit tests for the `calculate_cost` function in `src/utils/calc_stats.py`."*
+**You:** *"Write unit tests for the `calculate_cost` function in `src/utils/calc_stats.py` and then update the `README.md`."*
 
-**Manager:** *"Got it. Since this is a straightforward task, I'll spawn a single worker directly in the `fdds` project root. The `implementation_run.py` process has been started in the background. I'll let you know when the tests are ready."*
+**Manager:** *"Got it. Since this is a straightforward sequence, I'll queue these tasks for a single worker operating directly in the `fdds` project root. The `implementation_run.py` process has been started in the background. I'll let you know when the queue is processed."*
 
-*Behind the scenes:* The Doer agent writes the tests directly in your current working directory. You go grab a coffee. When you return, the tests are simply there, verified by the QA agent.
+*Behind the scenes:* The tasks are queued, and there is only one worker serving the queue. The Doer agent writes the tests directly in your current working directory, finishes, and then picks up the next task. You go grab a coffee. When you return, the tasks are simply there, verified by the QA agent sequentially.
 
 ## 🚀 2. The Scale-Up (Transition from Flat to Multi-Worker)
 *The moment your project's complexity demands isolation to prevent collisions.*
 
 **You:** *"Refactor the entire database schema to use SQLAlchemy, AND rewrite the CSS styles for the dashboard."*
 
-**Manager:** *"Those are large, parallel changes that could conflict. I am transitioning this request into a Multi-Worker environment. I've created two isolated sandboxes (`worker_sandboxes/task_db_refactor` and `worker_sandboxes/task_css_rewrite`) on separate Git branches. Both execution loops are now running independently."*
+**Manager:** *"Those are large, parallel changes that could conflict. I am transitioning this project from a flat structure to a Multi-Worker environment. We now have up to N tasks implemented in parallel (or N-1 isolated sandboxes, with the main instance left untouched for production). I've created two isolated sandboxes (`worker_sandboxes/task_db_refactor` and `worker_sandboxes/task_css_rewrite`) on separate Git branches. Both execution loops are now running independently."*
+
+*Behind the scenes:* Your directory structure evolves on the fly. The flat project now gains isolated workspaces, allowing parallel execution without merge conflicts during development.
 
 ## 📡 3. Monitoring Execution (Two Modes)
 *How you stay informed about the factory floor without micromanaging the workers.*
