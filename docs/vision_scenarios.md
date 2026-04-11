@@ -25,7 +25,7 @@ To give you a feel for what it is like to work with this Autonomous Developer OS
 
 **You:** *"Refactor the entire database schema to use SQLAlchemy, AND rewrite the CSS styles for the dashboard."*
 
-**Manager:** *"Those are large, parallel changes that could conflict. I am transitioning this project from a flat structure to a Multi-Worker environment. We now have up to N tasks implemented in parallel (or N-1 isolated sandboxes, with the main instance left untouched for production). I've created two isolated sandboxes (`worker_sandboxes/task_db_refactor` and `worker_sandboxes/task_css_rewrite`) on separate Git branches. Both execution loops are now running independently."*
+**Manager:** *"Those are large, parallel changes that could conflict. I am transitioning this project from a flat structure to a Multi-Worker environment. We now have up to N tasks implemented in parallel (or N-1 isolated sandboxes, with the main instance left untouched for production). I've created two isolated instances (`fdds/instance_db_refactor` and `fdds/instance_css_rewrite`) on separate Git branches. Both execution loops are now running independently."*
 
 *Behind the scenes:* Your directory structure evolves on the fly. The flat project now gains isolated workspaces, allowing parallel execution without merge conflicts during development.
 
@@ -40,16 +40,16 @@ projects/
 **After (Multi-Worker Structure):**
 ```text
 projects/
-├── fdds/                     # Production codebase (Untouched)
-│   ├── src/
-│   └── package.json
-└── worker_sandboxes/         # Isolated execution environments
-    ├── task_db_refactor/     # Worker 1 (branch: feature/db_refactor)
-    │   ├── src/              # Cloned source code
-    │   └── IRP_v1.md         # Worker 1's isolated artifacts
-    └── task_css_rewrite/     # Worker 2 (branch: feature/css_rewrite)
-        ├── src/              # Cloned source code
-        └── IRP_v2.md         # Worker 2's isolated artifacts
+└── fdds/                     # The Project Container
+    ├── .gemini.md            # Manifest updated
+    ├── instance_main/        # Production codebase (Untouched)
+    │   └── src/
+    ├── instance_db_refactor/ # Worker 1 (branch: feature/db_refactor)
+    │   ├── src/              
+    │   └── .agent_run/       # Hidden artifacts (IRP, QRP)
+    └── instance_css_rewrite/ # Worker 2 (branch: feature/css_rewrite)
+        ├── src/              
+        └── .agent_run/       # Hidden artifacts (IRP, QRP)
 ```
 
 ## 📡 3. Monitoring Execution (Two Modes)

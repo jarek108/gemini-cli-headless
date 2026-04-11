@@ -15,14 +15,14 @@ The **Gemini CLI** inherently bypasses many of these cloud limitations out-of-th
 
 ## Installation
 Currently available via GitHub:
-`ash
+```bash
 pip install git+https://github.com/jarek108/gemini-cli-headless.git
-`
+```
 
 *(Requires Node.js and `@google/gemini-cli` installed globally: `npm install -g @google/gemini-cli`)*
 
 ## Quick Start
-`python
+```python
 import shutil
 from gemini_cli_headless import run_gemini_cli_headless
 
@@ -38,18 +38,18 @@ new_session = run_gemini_cli_headless(
     prompt="Now explain it to a 5-year-old.",
     session_to_resume="my_context.json"
 )
-`
+```
 
 ---
 
 # 🚀 The Vision: Autonomous Developer OS
 
-While `gemini-cli-headless` is a powerful standalone library, its true potential is unlocked when used as the execution engine for an **Autonomous Developer OS (Multi-Agent Orchestration)**.
+While `gemini-cli-headless` is a powerful standalone library, its true potential is unlocked when used as the execution engine for an **Autonomous Developer OS (Multi-Agent Orchestration)**. 
 
 We are moving away from the "Terminal Babysitting Trap"—where an engineer must constantly monitor and course-correct a single AI agent—towards a structured, deterministic production line managed by a hierarchy of AI roles.
 
 To learn more about how this wrapper powers a fully autonomous, multi-agent development environment, explore the extended vision documents:
 
 *   **[🏗️ The Hierarchical Architecture & Execution Loop](docs/vision_architecture.md)**: Details the Manager/Worker topology, the Artifact-Driven Workflow (`IRP.md`, `QRP.md`), and the deterministic execution engine.      
-*   **[🏢 The Multi-Instance Project Architecture](docs/vision_multi_instance.md)**: Explains how a single project directory acts as a container for multiple isolated worker instances, detailing resource management, interference prevention, and the .gemini.md project manifest.
-*   **[🎬 Interaction Scenarios: A Day in the Life](docs/vision_scenarios.md)**: Practical examples of how a human (CEO) interacts with the Manager CLI to delegate tasks, transition from flat to multi-instance structures, and handle deadlock supervision. 
+*   **[🏢 The Multi-Instance Project Architecture](docs/vision_multi_instance.md)**: Explains how a single project directory acts as a container for multiple isolated worker instances, detailing resource management, interference prevention, and the `.gemini.md` project manifest.
+*   **[🎬 Interaction Scenarios: A Day in the Life](docs/vision_scenarios.md)**: Practical examples of how a human (CEO) interacts with the Manager CLI to delegate tasks, transition from flat to multi-instance structures, and handle deadlock supervision.
