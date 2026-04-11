@@ -29,6 +29,29 @@ To give you a feel for what it is like to work with this Autonomous Developer OS
 
 *Behind the scenes:* Your directory structure evolves on the fly. The flat project now gains isolated workspaces, allowing parallel execution without merge conflicts during development.
 
+**Before (Flat Structure):**
+```text
+projects/
+└── fdds/                     # Production codebase (Only 1 active worker)
+    ├── src/                  # Main source code
+    └── package.json
+```
+
+**After (Multi-Worker Structure):**
+```text
+projects/
+├── fdds/                     # Production codebase (Untouched)
+│   ├── src/
+│   └── package.json
+└── worker_sandboxes/         # Isolated execution environments
+    ├── task_db_refactor/     # Worker 1 (branch: feature/db_refactor)
+    │   ├── src/              # Cloned source code
+    │   └── IRP_v1.md         # Worker 1's isolated artifacts
+    └── task_css_rewrite/     # Worker 2 (branch: feature/css_rewrite)
+        ├── src/              # Cloned source code
+        └── IRP_v2.md         # Worker 2's isolated artifacts
+```
+
 ## 📡 3. Monitoring Execution (Two Modes)
 *How you stay informed about the factory floor without micromanaging the workers.*
 
