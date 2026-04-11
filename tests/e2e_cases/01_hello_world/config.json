@@ -1,0 +1,5 @@
+{
+  "max_iters": 2,
+  "doer_model": "gemini-1.5-flash",
+  "qa_model": "gemini-1.5-flash"
+}
