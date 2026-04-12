@@ -1,12 +1,16 @@
 # Artifact-Driven Workflow & Reprimand Loops
 
-If you rely on an LLM to parse a chat stream to determine if a task is finished, you will eventually fail. LLMs are prone to hallucinating completion, apologizing endlessly, or entering conversational loops. 
+Have you ever asked an AI to do something, and it replies "I have finished the task!"—but when you check the code, it actually didn't do anything? If you rely on an AI's chat messages to know if a job is done, you will eventually fail. 
 
 The Developer OS abandons unstructured chat entirely in favor of a strict **Artifact-Driven Workflow**.
 
-## The Artifact Contract (Artifact Prompting)
+## What is an "Artifact"?
 
-Agents are legally bound to produce and consume physical Markdown files. These files act as the universal API between the human, the Manager, the Doer, and the QA. They are use-case independent.
+In software engineering, an "artifact" is just a formal word for a physical file that proves work was done—like a receipt, a ticket, or a report. 
+
+In this system, agents are legally bound to produce and consume physical Markdown files instead of just chatting. These files act as the universal communication method between you, the Manager, the Doer, and the QA. 
+
+## The Artifact Contract (Artifact Prompting)
 
 ### 1. The Manager's Artifacts (`IRQ.md` & `QAR.md`)
 The Manager agent interacts with the human to determine intent, then compiles it into two strict downstream artifacts:

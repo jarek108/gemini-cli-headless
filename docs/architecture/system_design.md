@@ -1,11 +1,13 @@
 # System Design & Isolation
 
-The core architectural innovation of the Gemini CLI Headless Orchestrator V2 is the absolute decoupling of the **Control Plane** from the **Execution Plane**. This ensures that the agentic loop remains deterministic and that the user's workspace is protected from metadata pollution.
+The core architectural innovation of the Developer OS is the absolute separation of the **Control Plane** and the **Execution Plane**. 
+
+Think of the Control Plane as the "manager's office" (where the rules, budgets, and schedules are kept), and the Execution Plane as the "factory floor" (where the actual code is written). We keep them strictly separate so the workers (agents) can't mess with the rules or leave their scratchpads lying around the factory floor.
 
 ## The Two Planes
 
-### 1. The Control Plane (The Orchestrator)
-The Control Plane is managed by `implementation_run.py`. It is the brain of the operation. It manages budgets, tracks API errors, parses YAML frontmatter, decides when to trigger a Reprimand Loop, and orchestrates the Amnesia Engine.
+### 1. The Control Plane (The Manager's Office)
+The Control Plane is managed by the Python orchestrator (`implementation_run.py`). It is the brain of the operation. It manages budgets, tracks API errors, reads the Artifacts, decides when to trigger a Reprimand Loop, and runs the Amnesia Engine.
 
 **Crucially, the Control Plane does not live in your project directory.**
 

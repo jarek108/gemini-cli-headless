@@ -1,12 +1,14 @@
 # The Developer OS Manifesto
 
-## The Terminal Babysitting Trap
+## The Promise vs. The Reality
 
-For years, the promise of "agentic AI" was an open-ended chat interface. You tell an AI to build a feature, it streams code to a terminal, and you watch it. But as projects scale and complexity grows, this workflow breaks down. 
+For years, the promise of "agentic AI" was simple: you tell an AI to build a feature, you sit back, and it writes the code. 
 
-When an agent is given free rein over a codebase, it frequently encounters minor roadblocks. Without strict boundaries, it "solves" these roadblocks through unprompted, sprawling refactors. It changes architectural patterns, rewrites unrelated modules, and breaks tests it wasn't asked to touch. 
+But if you've actually used these tools on a real project, you know the reality is different. When an AI is given free rein over your codebase, it gets easily distracted. It encounters a minor bug and decides to rewrite three unrelated files just to "fix" it. It ignores your architectural rules. 
 
-The engineer's job degrades from *creating* to *babysitting*. You spend hours reviewing massive diffs, trying to untangle what the agent was actually trying to achieve from the chaotic mess it produced. This isn't scaling engineering; this is just relocating the cognitive load into a higher-stress form of supervision.
+Your job degrades from being an *engineer* to being a *babysitter*. You spend hours reviewing massive, confusing code changes, trying to figure out what the AI actually did. This isn't saving you time—it's just replacing the stress of writing code with the stress of supervising an unpredictable intern.
+
+*(For a technical breakdown of why this happens, see [The Terminal Babysitting Trap](the_terminal_babysitting_trap.md)).*
 
 ## The Strategic Pivot: Limit Freedom to Increase Capability
 

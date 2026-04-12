@@ -1,10 +1,12 @@
 # The Amnesia Engine & Context Injection
 
-One of the most persistent issues in autonomous agent loops is **Anchoring Bias**. 
+Have you ever argued with an AI, and it just keeps apologizing but repeating the exact same broken code? 
 
-When an agent writes a flawed piece of code in Iteration 1, and the QA agent points out the flaw, the Doer agent often spends Iterations 2, 3, and 4 stubbornly trying to patch its flawed approach rather than taking a step back and rewriting it correctly. The longer the session history grows, the more "anchored" the agent becomes to its original bad idea. Furthermore, a massive context window slows down generation and increases API costs dramatically.
+This is a well-known AI problem called **Anchoring Bias**. When an AI writes a flawed piece of code in Iteration 1, and you (or the QA agent) point out the flaw, the AI often spends Iterations 2, 3, and 4 stubbornly trying to patch its bad idea rather than taking a step back and rewriting it correctly. The longer the chat history gets, the more "anchored" the AI becomes to its original mistake. Furthermore, a massive context window slows down generation and increases API costs dramatically.
 
 To solve this, the Developer OS implements the **Amnesia Engine**.
+
+By forcing the AI to "go to sleep" and wake up with no memory of its past mistakes, we force it to look at the problem with fresh eyes.
 
 ## Hard Resets via Configuration
 
