@@ -7,17 +7,19 @@ This repository provides two powerful layers for AI-assisted software engineerin
 
 ## Why this exists: Escaping the "Terminal Babysitting Trap"
 
-As coding agents become more capable, **human attention becomes the primary bottleneck**. Current open-ended "vibe-coding" workflows fail to scale in real-world engineering environments because of predictable breakdowns:
+As coding agents become more capable, **human attention becomes the primary bottleneck**. If you've used open-ended "vibe-coding" tools, you've likely noticed they break down in real-world projects for a few predictable reasons:
 
-*   **Scope Drift & Unprompted Refactors:** Prompt-stated constraints ("don't touch X") aren't mechanically enforceable. Without hard boundaries, agents treat minor roadblocks as invitations to redesign the system. A simple feature request frequently spirals into massive, unprompted architectural changes that break unrelated invariants.
-*   **Leaky Quality Control (The Optimistic "I'm Done"):** When the same agent writes the code and validates it, you get an optimistic "I've finished the task!" with zero adversarial testing. This leaves actual validation to the human, who now has to reverse-engineer a messy diff to understand what was actually changed.
-*   **Sequential Bottlenecks & No Sprint Planning:** Standard CLI agents force you to babysit one task at a time. You watch it finish, review it, and then start the next. There is no good mechanism for queuing, parallelizing isolated tasks, or planning a "sprint" for agents to execute asynchronously.
-*   **Context Fragmentation & Anchoring Bias:** As a chat session grows, the agent becomes anchored to its past mistakes. It spends iterations defending a flawed approach instead of stepping back, forcing the human to act as a context-reconciliation engine.
-*   **The Granularity Trap:** Because you cannot trust the agent's high-level status reporting, you can never safely zoom out to project-level management. You lack the tools to transition smoothly between architectural intent and code-level intervention, keeping you permanently stuck micromanaging the terminal.
-*   **Human Collaboration Mismatch:** Coding agents operate like a solo "genius in a terminal." They don't integrate with team workflows like Kanban boards, peer approvals, or traceable decision histories. As a result, the single human operator becomes an overwhelmed gateway between the agent's output and the rest of the engineering team.
-*   **Workflow Violations:** Policies like running tests before merging or requiring PR reviews are fragile if only enforced by a prompt. Without hard, machine-enforced state transitions, agents easily bypass required checks, undermining codebase consistency and quality.
+*   **They get distracted easily:** Agents often try to rewrite whole systems or refactor unrelated code just to fix a small bug.
+*   **They grade their own homework:** The same agent that writes the code also tells you "it works!", leaving you to double-check everything.
+*   **You have to watch them constantly:** You can't just give them a list of tasks and walk away; you end up babysitting them step-by-step.
+*   **They get stuck in bad ideas:** If an agent makes a mistake early on, it will stubbornly try to patch that mistake instead of starting fresh.
+*   **You can't manage the big picture:** Because you have to micromanage the code terminal, you never get to step back and act like a project manager.
+*   **They don't play well with teams:** Agents act like solo hackers, making it hard to integrate their work into normal team reviews and Kanban boards.
+*   **They ignore the rules:** It's too easy for them to skip running tests or bypass code reviews because typed "instructions" aren't hard rules.
 
-If a system is "productive" only when an engineer is continuously monitoring terminal output, diff-by-diff, it isn't scaling engineering—it is just relocating the work into a higher-stress form of supervision.
+If a system is "productive" only when you are continuously monitoring its terminal output, it isn't scaling engineering—it is just relocating your work into a higher-stress form of supervision.
+
+*(For a more in-depth technical analysis of these issues, read [The Terminal Babysitting Trap](docs/philosophy/the_terminal_babysitting_trap.md)).*
 
 **The strategic pivot: limit freedom to increase capability.**
 
