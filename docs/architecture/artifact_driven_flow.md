@@ -4,17 +4,21 @@ If you rely on an LLM to parse a chat stream to determine if a task is finished,
 
 The Developer OS abandons unstructured chat entirely in favor of a strict **Artifact-Driven Workflow**.
 
-## The Artifact Contract
+## The Artifact Contract (Layer 2 API)
 
-Agents are legally bound to produce physical Markdown files on disk. These files are the *only* recognized way to change the state of the orchestrator.
+Agents are legally bound to produce and consume physical Markdown files. These files act as the universal API between the human, the Manager, the Doer, and the QA. They are use-case independent.
 
-### 1. The Implementation Report (`IRP.md`)
-When the Doer agent finishes its code modifications, it **MUST** generate an `IRP.md` file in the root of the workspace. This file must contain YAML frontmatter and a structured summary of changes.
+### 1. The Manager's Artifacts (`IRQ.md` & `QAR.md`)
+The Manager agent interacts with the human to determine intent, then compiles it into two strict downstream artifacts:
+*   **Implementation Request (`IRQ.md`)**: The contract for the Doer. Defines what to build, boundaries, constraints, and definition of done.
+*   **QA Request (`QAR.md`)**: The contract for the QA. Highlights specific risk areas, expected side effects, and exact acceptance criteria the QA must validate for this specific task.
 
-If the agent says "I am done" in its chat response but fails to write the `IRP.md` file, the orchestrator ignores the chat response.
+### 2. The Implementation Report (`IRP.md`)
+When the Doer agent finishes its code modifications, it **MUST** generate an `IRP.md` file. This file acts as the Doer's receipt. It forces self-reflection by requiring sections like "Deviations from IRQ" and "Edge cases and known limitations."
+If the agent says "I am done" in chat but fails to write this file, the orchestrator ignores the chat response.
 
-### 2. The QA Report (`QRP.md`)
-When the QA Auditor finishes reviewing the code, it **MUST** generate a `QRP.md` file. 
+### 3. The QA Report (`QRP.md`)
+When the QA Auditor finishes reviewing the code against the `QAR.md` and project context, it **MUST** generate a `QRP.md` file. 
 Crucially, the orchestrator enforces a strict parsing contract on this file to determine routing. It looks for specific substrings (e.g., `outcome: final` or `outcome: to correct`) in the YAML frontmatter.
 
 ## Reprimand Loops: Forcing Compliance

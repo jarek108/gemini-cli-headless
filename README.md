@@ -42,6 +42,7 @@ Dive deeper into the philosophy and mechanics of the Developer OS:
 *   [The Developer OS Manifesto](docs/philosophy/manifesto.md)
 
 ### Architecture
+*   [The 3-Layer Prompting Stack](docs/architecture/prompting_architecture.md)
 *   [System Design & Isolation](docs/architecture/system_design.md)
 *   [The Artifact Contract & Reprimand Loops](docs/architecture/artifact_driven_flow.md)
 *   [The Amnesia Engine & Context Injection](docs/architecture/amnesia_engine.md)
