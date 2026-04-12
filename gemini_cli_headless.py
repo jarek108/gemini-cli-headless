@@ -23,6 +23,7 @@ class GeminiSession:
     session_id: str
     session_path: str
     stats: Dict[str, Any] = field(default_factory=dict)
+    api_errors: List[Dict[str, Any]] = field(default_factory=list)
     raw_data: Dict[str, Any] = field(default_factory=dict)
 
 def _get_cli_chat_dir(project_name: str) -> str:
@@ -50,6 +51,7 @@ def run_gemini_cli_headless(
     prompt: str,
     model_id: Optional[str] = None,
     files: Optional[List[str]] = None,
+    session_id: Optional[str] = None,
     session_to_resume: Optional[str] = None,
     project_name: Optional[str] = None,
     cwd: Optional[str] = None,
@@ -62,7 +64,7 @@ def run_gemini_cli_headless(
         base_dir = cwd if cwd else os.getcwd()
         project_name = _sanitize_project_name(os.path.basename(base_dir))
 
-    session_id_to_use = None
+    session_id_to_use = session_id
     cli_dir = _get_cli_chat_dir(project_name)
     
     if session_to_resume:
@@ -113,21 +115,63 @@ def run_gemini_cli_headless(
     if not combined_output.strip():
         raise RuntimeError(f"CLI returned absolutely empty output.")
 
-    start_idx = combined_output.find('{')
-    end_idx = combined_output.rfind('}')
-    if start_idx == -1 or end_idx == -1:
-        raise RuntimeError(f"CLI output did not contain JSON. Output: {combined_output[:500]}...")
+    # Find all JSON-looking blocks and try to parse them from the end
+    # (The actual response is usually the last valid JSON object)
     
-    json_str = combined_output[start_idx:end_idx+1]
-    try:
-        response_data = json.loads(json_str)
-    except json.JSONDecodeError as e:
-        raise RuntimeError(f"Failed to parse JSON: {str(e)}\nExtracted: {json_str[:100]}...")
+    response_data = None
+    last_error = None
     
+    # Search for valid JSON from the end of the output
+    search_pos = len(combined_output)
+    while search_pos > 0:
+        start_idx = combined_output.rfind('{', 0, search_pos)
+        if start_idx == -1:
+            break
+            
+        # Try to find a matching closing brace
+        brace_count = 0
+        end_idx = -1
+        for i in range(start_idx, len(combined_output)):
+            if combined_output[i] == '{':
+                brace_count += 1
+            elif combined_output[i] == '}':
+                brace_count -= 1
+                if brace_count == 0:
+                    end_idx = i
+                    break
+        
+        if end_idx != -1:
+            json_str = combined_output[start_idx:end_idx+1]
+            try:
+                candidate = json.loads(json_str)
+                # We want a block that looks like a Gemini response (has session_id or response or error)
+                if isinstance(candidate, dict) and ("session_id" in candidate or "response" in candidate or "text" in candidate or "error" in candidate):
+                    response_data = candidate
+                    break
+            except json.JSONDecodeError as e:
+                last_error = e
+        
+        search_pos = start_idx
+
+    if not response_data:
+        raise RuntimeError(f"CLI output did not contain a valid Gemini response JSON. Last error: {last_error}\nOutput: {combined_output[:500]}...")
+    
+    # 1. Capture errors from logs (retries)
+    # Pattern: "failed with status 503"
+    api_errors = []
+    retry_matches = re.findall(r"failed with status (\d+)", combined_output)
+    for code in retry_matches:
+        api_errors.append({"code": int(code), "message": "Transient API Error (Retry)"})
+
+    # 2. Check for terminal error in JSON
     if "error" in response_data and response_data["error"]:
         err = response_data["error"]
         msg = err.get("message") if isinstance(err, dict) else str(err)
-        raise RuntimeError(f"Gemini Error: {msg}")
+        code = err.get("code", "unknown") if isinstance(err, dict) else "unknown"
+        api_errors.append({"code": code, "message": msg})
+        # If it's a terminal error and we have no response text, we should probably raise
+        if not response_data.get("response") and not response_data.get("text"):
+            raise RuntimeError(f"Gemini Error: {msg} (Code: {code})")
 
     final_session_id = response_data.get("session_id") or session_id_to_use
     final_session_path = _find_session_file(cli_dir, final_session_id)
@@ -142,13 +186,34 @@ def run_gemini_cli_headless(
         if not final_session_path:
             final_session_path = os.path.join(cli_dir, f"session-{final_session_id}.json")
 
-    trace = response_data.get("trace", {})
-    stats = trace.get("stats", {})
+    # Extract and aggregate stats from the root 'stats' object
+    stats_raw = response_data.get("stats", {})
+    aggregated_stats = {
+        "inputTokens": 0,
+        "outputTokens": 0,
+        "thoughtTokens": 0,
+        "cachedTokens": 0,
+        "totalRequests": 0,
+        "totalErrors": 0
+    }
+    
+    if "models" in stats_raw:
+        for model_data in stats_raw["models"].values():
+            tokens = model_data.get("tokens", {})
+            aggregated_stats["inputTokens"] += tokens.get("input", 0)
+            aggregated_stats["outputTokens"] += tokens.get("candidates", 0)
+            aggregated_stats["thoughtTokens"] += tokens.get("thoughts", 0)
+            aggregated_stats["cachedTokens"] += tokens.get("cached", 0)
+            
+            api = model_data.get("api", {})
+            aggregated_stats["totalRequests"] += api.get("totalRequests", 0)
+            aggregated_stats["totalErrors"] += api.get("totalErrors", 0)
     
     return GeminiSession(
         text=response_data.get("text", "") or response_data.get("response", ""),
         session_id=final_session_id,
         session_path=final_session_path,
-        stats=stats,
+        stats=aggregated_stats,
+        api_errors=api_errors,
         raw_data=response_data
     )

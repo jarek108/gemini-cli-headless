@@ -1,0 +1,6 @@
+{
+  "doer_model": "gemini-3-flash-preview",
+  "qa_model": "gemini-3-flash-preview",
+  "max_iters": 3,
+  "task_title": "Hello World Task"
+}

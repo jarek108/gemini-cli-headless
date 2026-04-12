@@ -1,0 +1,15 @@
+{
+  "iteration": 1,
+  "total_cost": 0.00606268125,
+  "total_api_requests": 11,
+  "total_api_errors": 0,
+  "api_error_manifest": {},
+  "history": [
+    {
+      "iteration": 1,
+      "outcome": "final"
+    }
+  ],
+  "status": "SUCCESS",
+  "error": null
+}

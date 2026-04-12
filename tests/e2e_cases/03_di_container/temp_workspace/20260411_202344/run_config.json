@@ -1,0 +1,6 @@
+{
+  "doer_model": "gemini-2.5-flash-lite",
+  "qa_model": "gemini-3-flash-preview",
+  "max_iters": 3,
+  "task_title": "Task: Dependency Injection Container with Cycle Detection"
+}

@@ -1,0 +1,19 @@
+{
+  "iteration": 3,
+  "total_cost": 0.03894504375,
+  "total_api_requests": 52,
+  "total_api_errors": 0,
+  "api_error_manifest": {},
+  "history": [
+    {
+      "iteration": 1,
+      "outcome": "to correct"
+    },
+    {
+      "iteration": 2,
+      "outcome": "to correct"
+    }
+  ],
+  "status": "ABORTED",
+  "error": "Doer failed to produce IRP.md"
+}

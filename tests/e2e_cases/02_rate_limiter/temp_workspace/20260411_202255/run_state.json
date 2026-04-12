@@ -1,0 +1,17 @@
+{
+  "iteration": 1,
+  "total_cost": 0.00593848125,
+  "total_api_requests": 15,
+  "total_api_errors": 1,
+  "api_error_manifest": {},
+  "history": [
+    {
+      "iteration": 1,
+      "doer_hash": "a8480239be0170af88485126034aee5c3cc44e3bcc845f36dcfac24c6a13de11",
+      "qa_status": "APPROVED",
+      "feedback_hash": "34a703d172ab9be30d45611384cf34ba"
+    }
+  ],
+  "status": "SUCCESS",
+  "error": null
+}
