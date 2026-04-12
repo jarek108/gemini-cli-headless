@@ -13,7 +13,7 @@ last_qa_report: {{last_qrp}}
 1-2 sentences of the situation before the work started. State if this round started from a prior fix attempt or a clean base.
 
 ## Work performed
-2-3 sentences of what changed at a high level and why those changes address the request/feedback.
+2-3 sentences of what changed at a high level and why those changes address the IRQ.
 
 # Guideline realization
 
@@ -42,7 +42,7 @@ Capture anything intentionally left undone (cleanup, refactors).
 # Self Assessment
 
 ## Edge cases and known limitations
-List situations where behavior may still be incorrect or undefined.
+List situations where behavior may still be incorrect or undefined. **You MUST self-report any known flaws.**
 
 ## QA handoff 
-Actionable validation plan: what to test, why it matters, and what signals confirm success.
+Actionable validation plan based on the QAR.md: what should the QA focus on based on your changes?
