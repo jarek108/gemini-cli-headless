@@ -1,87 +1,71 @@
-# Gemini CLI Headless & Developer OS Orchestrator
+# gemini-cli-headless (Layer 0 Engine)
 
-This repository provides two powerful layers for AI-assisted software engineering:
+A standalone, zero-dependency Python wrapper for executing the official Node.js Google Gemini CLI (`@google/gemini-cli`) in fully programmatic, headless mode.
 
-1.  **The Wrapper (`gemini_cli_headless.py`)**: A standalone, zero-dependency Python bridge for executing the official Node.js `@google/gemini-cli` in fully programmatic, headless mode.
-2.  **The Orchestrator (`implementation_run.py`)**: An advanced, artifact-driven state machine that acts as an Autonomous Developer OS, moving beyond chat interfaces into a structured, verifiable production line.
+> **Note on Architecture:** 
+> This repository contains **Layer 0** (The Execution Engine). If you are looking for the Autonomous Developer OS (the multi-agent Git state machine, contracts, and dashboard), please visit the **[Cortex](https://github.com/jarek108/Cortex)** repository.
 
-## Why this exists: Escaping the "Terminal Babysitting Trap"
+## Why this wrapper?
+While the official Python SDKs are excellent for standard API calls, the `@google/gemini-cli` provides powerful built-in features for developers working with local codebases (e.g., attaching entire directories via `@files` or resuming specific `sessionId` chat histories from the CLI's internal cache).
 
-As coding agents become more capable, **human attention becomes the primary bottleneck**. If you've used open-ended "vibe-coding" tools, you've likely noticed they break down in real-world projects for a few predictable reasons:
+This wrapper allows you to leverage those CLI-specific features headlessly within your Python scripts, Data pipelines, or RAG systems. It is built for absolute resilience, featuring native retry loops for transient infrastructure drops.
 
-*   **They get distracted easily:** Agents often try to rewrite whole systems or refactor unrelated code just to fix a small bug.
-*   **They grade their own homework:** The same agent that writes the code also tells you "it works!", leaving you to double-check everything.
-*   **You have to watch them constantly:** You can't just give them a list of tasks and walk away; you end up babysitting them step-by-step.
-*   **They get stuck in bad ideas:** If an agent makes a mistake early on, it will stubbornly try to patch that mistake instead of starting fresh.
-*   **You can't manage the big picture:** Because you have to micromanage the code terminal, you never get to step back and act like a project manager.
-*   **They don't play well with teams:** Agents act like solo hackers, making it hard to integrate their work into normal team reviews and Kanban boards.
-*   **They ignore the rules:** It's too easy for them to skip running tests or bypass code reviews because typed "instructions" aren't hard rules.
+## Features
+* **Zero Dependencies**: Pure Python standard library (no `requests`, no `aiohttp`).
+* **JSON Parsing**: Automatically requests and safely parses the `--output-format json` from the Node CLI into a clean Python `GeminiSession` dataclass.
+* **Token & Cost Stats**: Aggregates `inputTokens`, `outputTokens`, and `cachedTokens` from the raw JSON response.
+* **Session Resumption**: Supports the `-r <sessionId>` flag, and even allows you to inject local `.json` session files directly into the Node CLI cache before execution.
+* **Built-in Resilience**: Automatically catches transient API drops (like 503 errors) and malformed JSON, retrying the subprocess call seamlessly without crashing your script.
 
-If a system is "productive" only when you are continuously monitoring its terminal output, it isn't scaling engineering—it is just relocating your work into a higher-stress form of supervision.
-
-*(For a more in-depth technical analysis of these issues, read [The Terminal Babysitting Trap](docs/philosophy/the_terminal_babysitting_trap.md)).*
-
-**The strategic pivot: limit freedom to increase capability.**
-
-The way to make agents *more useful* is to make them *less free* through **hard workflows**. This project treats "agentic coding" like a controlled production line, enforcing state transitions via strict Markdown artifacts, physical workspace isolation, adversarial QA roles, and engineered memory amnesia.
-
----
-
-## 🏗️ The Architecture (V2)
-
-The system strictly separates the human coordination layer from the physical execution layer:
-
-*   **[Control Plane & Central Registry](docs/architecture/registry_and_state.md)**: The orchestrator lives completely outside your codebase. All configurations, running costs, API logs, and execution histories are routed to an isolated Central Registry (`~/.gemini/orchestrator/runs/`). The agent never sees its own metadata.
-*   **[Execution Plane (The Clean Workspace)](docs/architecture/system_design.md)**: Agents operate in a sandboxed directory containing *only* the source code and the immediate task specification (`IRQ.md`).
-*   **[Artifact-Driven Workflow](docs/architecture/artifact_driven_flow.md)**: Agents communicate progress not through chat, but by producing strict YAML-frontmatter Markdown artifacts (`IRP.md` for execution, `QRP.md` for QA). If an agent fails to produce a file, the orchestrator triggers a *Reprimand Loop*, automatically disciplining the model to follow the protocol.
-*   **[The Amnesia Engine](docs/architecture/amnesia_engine.md)**: To prevent LLM "anchoring bias" (where a model stubbornly defends a flawed approach), agents are subjected to frequent, hard memory resets. The orchestrator rebuilds their context dynamically by injecting specific historical artifacts (`<historical_feedback>`) via XML before each run.
-
-## 📖 Documentation
-
-Dive deeper into the philosophy and mechanics of the Developer OS:
-
-### Philosophy
-*   [The Developer OS Manifesto](docs/philosophy/manifesto.md)
-
-### Architecture
-*   [The Prompting Architecture](docs/architecture/prompting_architecture.md)
-*   [System Design & Isolation](docs/architecture/system_design.md)
-*   [The Artifact Contract & Reprimand Loops](docs/architecture/artifact_driven_flow.md)
-*   [The Execution Lifecycle: Components & Artifacts](docs/architecture/execution_lifecycle.md)
-*   [The Amnesia Engine & Context Injection](docs/architecture/amnesia_engine.md)
-*   [Central Registry & State Management](docs/architecture/registry_and_state.md)
-*   [Specialized QA & The Evolution of Skills](docs/architecture/specialized_qa_skills.md)
-*   [The Glass: Observability Dashboard](docs/architecture/the_glass_dashboard.md)
-
-### Usage
-*   [Manager Toolbox (CLI Interaction)](docs/usage/manager_toolbox.md)
-*   [Orchestrator Guide (E2E Workflows)](docs/usage/orchestrator_guide.md)
-*   [Python API Reference (The Wrapper)](docs/usage/wrapper_api.md)
-
----
-
-## 🚀 The Developer OS v0.2 Features
-
-*   **The Prompting Architecture**: Strict Role Prompts, Artifact Templates, and Project Knowledge.
-*   **Artifact Schema Validation**: Automatic reprimands for agents who fail to follow file structures.
-*   **Git Gating**: Enforcement of clean workspaces for deterministic execution.
-*   **Manager Toolbox**: Simplified interaction scripts for project initialization and task creation.
-*   **Structured QA Rituals**: Machine-readable testing instructions.
-
----
-
-## Quick Start: The Low-Level Wrapper
-If you just want the Python API to run headless commands:
+## Installation
 
 ```bash
+# Make sure you have the Node.js CLI installed globally first:
+npm install -g @google/gemini-cli
+
+# Then install this Python wrapper:
 pip install git+https://github.com/jarek108/gemini-cli-headless.git
 ```
+
+## Quick Start
 
 ```python
 from gemini_cli_headless import run_gemini_cli_headless
 
-# Execute a command headlessly
-session = run_gemini_cli_headless("Explain quantum computing.")
-print(f"Tokens Used: {session.stats['totalTokens']}")
+# Provide your API key explicitly, or let the wrapper use your environment variables
+my_key = "AIzaSy..."
+
+# Execute a command headlessly with built-in retries
+session = run_gemini_cli_headless(
+    prompt="Explain quantum computing in one sentence.",
+    api_key=my_key,
+    max_retries=3
+)
+
+print(f"Cost basis - Input: {session.stats.get('inputTokens')}, Output: {session.stats.get('outputTokens')}")
 print(f"Response: {session.text}")
+print(f"Session ID: {session.session_id}")
+```
+
+## Portable Memory (Resuming from a local file)
+
+Instead of relying on the global CLI cache, you can keep session files directly in your project and inject them on the fly.
+
+```python
+import shutil
+from gemini_cli_headless import run_gemini_cli_headless
+
+# 1. First interaction
+session = run_gemini_cli_headless("Remember the secret password is 'Rosebud'.")
+
+# 2. Save the session to your local project
+shutil.copy2(session.session_path, "my_context.json")
+
+# ... Days later on a different machine ...
+
+# 3. Resume the conversation later from your local file!
+new_session = run_gemini_cli_headless(
+    prompt="What was the secret password?",
+    session_to_resume="my_context.json"
+)
 ```
