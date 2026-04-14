@@ -47,9 +47,11 @@ Dive deeper into the philosophy and mechanics of the Developer OS:
 *   [The Prompting Architecture](docs/architecture/prompting_architecture.md)
 *   [System Design & Isolation](docs/architecture/system_design.md)
 *   [The Artifact Contract & Reprimand Loops](docs/architecture/artifact_driven_flow.md)
+*   [The Execution Lifecycle: Components & Artifacts](docs/architecture/execution_lifecycle.md)
 *   [The Amnesia Engine & Context Injection](docs/architecture/amnesia_engine.md)
 *   [Central Registry & State Management](docs/architecture/registry_and_state.md)
 *   [Specialized QA & The Evolution of Skills](docs/architecture/specialized_qa_skills.md)
+*   [The Glass: Observability Dashboard](docs/architecture/the_glass_dashboard.md)
 
 ### Usage
 *   [Manager Toolbox (CLI Interaction)](docs/usage/manager_toolbox.md)
@@ -65,24 +67,6 @@ Dive deeper into the philosophy and mechanics of the Developer OS:
 *   **Git Gating**: Enforcement of clean workspaces for deterministic execution.
 *   **Manager Toolbox**: Simplified interaction scripts for project initialization and task creation.
 *   **Structured QA Rituals**: Machine-readable testing instructions.
-
----
-
-## Quick Start: The Low-Level Wrapper
-If you just want the Python API to run headless commands:
-
-```bash
-pip install git+https://github.com/jarek108/gemini-cli-headless.git
-```
-
-```python
-from gemini_cli_headless import run_gemini_cli_headless
-
-# Execute a command headlessly
-session = run_gemini_cli_headless("Explain quantum computing.")
-print(f"Tokens Used: {session.stats['totalTokens']}")
-print(f"Response: {session.text}")
-```Wrapper)](docs/usage/wrapper_api.md)
 
 ---
 

@@ -6,15 +6,15 @@ The Developer OS abandons unstructured chat entirely in favor of a strict **Arti
 
 ## What is an "Artifact"?
 
-In software engineering, an "artifact" is just a formal word for a physical file that proves work was done—like a receipt, a ticket, or a report. 
+In software engineering, an "artifact" is a physical file that proves work was done. In this system, artifacts act as **Black Box Flight Recorders** and **Audit Logs** for the system's execution. They are NOT input fields for humans. 
 
-In this system, agents are legally bound to produce and consume physical Markdown files instead of just chatting. These files act as the universal communication method between you, the Manager, the Doer, and the QA. 
+By enforcing communication through rigid Markdown files on the disk, we ensure that state is deterministic and context is highly compressed.
 
 ## The Artifact Contract (Artifact Templates)
 
 ### 1. The Manager's Artifacts (`IRQ.md` & `QAR.md`)
-The Manager agent interacts with the human to determine intent, then compiles it into two strict downstream artifacts:
-*   **Implementation Request (`IRQ.md`)**: The contract for the Doer. Defines what to build, boundaries, constraints, and definition of done.
+The Manager acts as a Tech Lead. After a successful "meeting" with the human user, the Manager goes "offline" to compile the intent into two strict downstream artifacts. The user does not write or review these files; they are compiled intermediate representations.
+*   **Implementation Request (`IRQ.md`)**: The Space-Grade Engineering Specification for the Doer. Defines what to build, boundaries, constraints, and definition of done.
 *   **QA Request (`QAR.md`)**: The contract for the QA. Highlights specific risk areas, expected side effects, and exact acceptance criteria the QA must validate for this specific task.
 
 ### 2. The Implementation Report (`IRP.md`)

@@ -11,23 +11,30 @@ To solve this, we abandon custom prompt engineering entirely. Instead, we use a 
 ---
 
 ## Role Prompts
-*Location: Workspace Root (`GEMINI.md`) for the Manager, Orchestrator Source (`templates/roles/`) for Doer/QA.*  
+*Location: Workspace Root (`GEMINI.md`) for the Interactive Manager, Orchestrator Source (`templates/roles/`) for Headless modes.*  
 
-We restrict the system to exactly three universal agent roles. Their prompts define how they relate to the artifacts and each other, not how to code.
+We restrict the system to exactly **three universal agent roles**. However, to bridge the gap between human conversation and machine execution, the Manager role operates in two distinct modes—much like a real Tech Lead who talks to you in a meeting room, and then goes back to their desk to write the Jira tickets.
 
-*   **The Manager:** The interactive CLI agent you talk to. It translates your intent into tasks (`IRQ.md`/`QAR.md`) and updates project rules when you provide feedback.
-*   **The Doer:** The blind builder. It reads the tasks and project rules, writes the code, and produces an Implementation Report (`IRP.md`). It is forbidden from expanding scope.
-*   **The QA:** The strict enforcer. It reads the QA Request (`QAR.md`) and project rules, blindly executes the required tests, and produces a QA Report (`QRP.md`). It rejects the work if any rule is broken.
+### 1. The Manager (The Tech Lead)
+The Manager sits between the human and the execution plane. It operates in two modes:
+*   **Interactive (The Meeting Room)**: The CLI agent you talk to. It asks sharp questions, probes edge cases, and seeks to reach a "Certainty Threshold" regarding your intent.
+*   **Headless (The Desk Work)**: Once certainty is reached, the Manager uses the `implement_feature()` tool to go offline. In this headless mode, it acts as a bureaucratic clerk, compiling the meeting notes into rigid, Space-Grade Engineering Specifications (`IRQ.md` and `QAR.md`) without bothering the human with the formatting.
+
+### 2. The Doer (The Builder)
+The blind builder. It reads the tasks and project rules, writes the code, and produces an Implementation Report (`IRP.md`). It is forbidden from expanding scope.
+
+### 3. The QA (The Enforcer)
+The strict enforcer. It reads the QA Request (`QAR.md`) and project rules, blindly executes the required tests, and produces a QA Report (`QRP.md`). It rejects the work if any rule is broken.
 
 ---
 
 ## Artifact Templates
 *Location: Orchestrator Source (`templates/artifacts/`)*  
 
-We don't rely on chat messages to know if a job is done. Agents must structure their thoughts and outputs using strict Markdown templates.
+We don't rely on chat messages to know if a job is done. Agents must structure their thoughts and outputs using strict Markdown templates. These artifacts are essentially "Black Box Flight Recorders"—you only need to read them if something crashes.
 
-*   **Implementation Request (IRQ):** The Manager's contract telling the Doer what to build and what not to touch.
-*   **QA Request (QAR):** The Manager's contract telling the QA what specific risk areas to test.
+*   **Implementation Request (IRQ):** The Manager's compiled contract telling the Doer what to build and what not to touch.
+*   **QA Request (QAR):** The Manager's compiled contract telling the QA what specific risk areas to test.
 *   **Implementation Report (IRP):** The Doer's receipt proving it finished the work and noting any edge cases.
 *   **QA Report (QRP):** The QA's final verdict (`final` or `to correct`). The Python orchestrator reads this to advance the loop.
 
@@ -47,5 +54,3 @@ Instead of rewriting agent prompts when a mistake happens, the system learns lik
 2. **The Intervention:** You tell the Manager CLI: *"You both missed the UI overlap on the mobile viewport."*
 3. **Policy Formulation:** The Manager autonomously updates your project's `GEMINI.md` file, adding a new rule under `## QA Rituals`: *"Mobile Viewport Check: QA must run `mobile_test.sh`."*
 4. **Permanent Hardening:** The system has permanently learned. The next time the QA agent boots up for a UI task, it reads the updated Project Knowledge and ruthlessly enforces the new mobile test.
-
-When errors happen, you don't fix the code—you instruct the Manager to update the Standard Operating Procedure, permanently hardening your CI pipeline.

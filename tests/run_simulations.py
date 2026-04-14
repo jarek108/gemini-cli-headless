@@ -34,13 +34,24 @@ RESET = "\033[0m"
 def get_latest_run_id():
     """Returns the most recent run ID from the registry."""
     if not REGISTRY_BASE.exists():
+        print(f"  [DEBUG] Registry base does not exist: {REGISTRY_BASE}")
         return None
     runs = [d for d in os.listdir(REGISTRY_BASE) if os.path.isdir(REGISTRY_BASE / d)]
     if not runs:
         return None
     # Sort by timestamp in folder name (run_12345678)
-    runs.sort(key=lambda x: int(x.split('_')[1]) if '_' in x else 0, reverse=True)
+    try:
+        runs.sort(key=lambda x: int(x.split('_')[1]) if '_' in x else 0, reverse=True)
+    except Exception as e:
+        print(f"  [DEBUG] Error sorting runs: {e}")
     return runs[0]
+
+import stat
+
+def remove_readonly(func, path, _):
+    """Clear the readonly bit and reattempt the file removal."""
+    os.chmod(path, stat.S_IWRITE)
+    func(path)
 
 def run_simulation(case_path: Path):
     case_name = case_path.name
@@ -50,8 +61,18 @@ def run_simulation(case_path: Path):
     
     # 1. Setup Sandbox
     if sandbox.exists():
-        shutil.rmtree(sandbox)
+        shutil.rmtree(sandbox, onerror=remove_readonly)
     os.makedirs(sandbox, exist_ok=True)
+    
+    # 1.1 Initialize Git
+    subprocess.run(["git", "init"], cwd=sandbox, capture_output=True, check=True)
+    subprocess.run(["git", "config", "user.email", "sim@test.com"], cwd=sandbox, capture_output=True, check=True)
+    subprocess.run(["git", "config", "user.name", "Simulation"], cwd=sandbox, capture_output=True, check=True)
+    
+    # Genesis commit for the repo itself
+    (sandbox / "README.md").write_text("# Simulation Sandbox")
+    subprocess.run(["git", "add", "."], cwd=sandbox, check=True)
+    subprocess.run(["git", "commit", "-m", "initial commit"], cwd=sandbox, check=True)
     
     # 2. Deploy Manager Prompt
     if MANAGER_PROMPT_SOURCE.exists():
@@ -67,6 +88,10 @@ def run_simulation(case_path: Path):
                 shutil.copytree(s, d)
             else:
                 shutil.copy2(s, d)
+    
+    # 3.1 Commit Initial State
+    subprocess.run(["git", "add", "."], cwd=sandbox, check=True)
+    subprocess.run(["git", "commit", "-m", "deploy initial state"], cwd=sandbox, check=True)
                 
     # 4. Read User Prompt
     with open(case_path / "input_prompt.txt", 'r', encoding='utf-8') as f:
@@ -89,56 +114,71 @@ def run_simulation(case_path: Path):
         return False
 
     # 6. Verification
-    print(f"{YELLOW}[PHASE: VERIFICATION]{RESET} Checking protocol invariants...")
+    print(f"{YELLOW}[PHASE: VERIFICATION]{RESET} Checking Git Time-Travel invariants...")
     
     errors = []
     
-    # A. Contract Check (Workspace)
-    # We look for folders (projects) inside the sandbox to find where artifacts should be
-    projects = [d for d in os.listdir(sandbox) if os.path.isdir(sandbox / d)]
-    found_contracts = False
-    for p in projects:
-        if os.path.exists(sandbox / p / "IRQ.md") and os.path.exists(sandbox / p / "QAR.md"):
-            found_contracts = True
-            print(f"  [+] Contracts found in project: {p}")
-            break
-    if not found_contracts:
-        errors.append("No IRQ.md/QAR.md found in any project directory.")
+    # A. Branch Check
+    try:
+        res = subprocess.run(["git", "branch", "--show-current"], cwd=sandbox, capture_output=True, text=True, check=True)
+        current_branch = res.stdout.strip()
+        if not current_branch.startswith("gemini-run_"):
+            errors.append(f"Not on a gemini-run branch. Current: {current_branch}")
+        else:
+            print(f"  [+] On feature branch: {current_branch}")
+    except Exception as e:
+        errors.append(f"Failed to check git branch: {e}")
 
-    # B. Registry Check
+    # B. Commit History Check
+    try:
+        res = subprocess.run(["git", "log", "--oneline", "-n", "10"], cwd=sandbox, capture_output=True, text=True, check=True)
+        history = res.stdout
+        print(f"  [DEBUG] Git history:\n{history}")
+        
+        required_commits = ["[MANAGER] Drafted Space-Grade Specifications", "[DOER]", "[QA]"]
+        for msg in required_commits:
+            if msg not in history:
+                errors.append(f"Missing commit in history: {msg}")
+            else:
+                print(f"  [+] Found commit: {msg}")
+    except Exception as e:
+        errors.append(f"Failed to check git history: {e}")
+
+    # C. Artifact Persistence Check
+    artifacts = ["IRQ.md", "QAR.md", "IRP.md", "QRP.md"]
+    found_any = False
+    for root, dirs, files in os.walk(sandbox):
+        if ".git" in dirs: dirs.remove(".git")
+        for art in artifacts:
+            if art in files:
+                print(f"  [+] Found artifact: {os.path.join(root, art)}")
+                found_any = True
+    
+    if not found_any:
+        errors.append("No execution artifacts found in workspace.")
+
+    # D. Registry Check (Telemetry)
     latest_run = get_latest_run_id()
     if not latest_run:
         errors.append("No run directory found in Central Registry.")
     else:
         run_path = REGISTRY_BASE / latest_run
-        # Ensure it's a fresh run (created after we started the simulation)
-        run_timestamp = int(latest_run.split('_')[1]) if '_' in latest_run else 0
-        if run_timestamp < int(start_time):
-             errors.append(f"Latest registry run ({latest_run}) predates the test start time.")
+        print(f"  [+] Found Telemetry in Registry: {latest_run}")
+        
+        # E. Terminal State Check
+        state_file = run_path / "run_state.json"
+        if not state_file.exists():
+            errors.append("Missing run_state.json in registry.")
         else:
-            print(f"  [+] Found new Registry Run: {latest_run}")
-            
-            # C. Artifact Trail Check
-            artifacts_dir = run_path / "artifacts"
-            if not (artifacts_dir / "v1_IRP.md").exists():
-                errors.append("Missing v1_IRP.md in registry.")
-            if not (artifacts_dir / "v1_QRP.md").exists():
-                errors.append("Missing v1_QRP.md in registry.")
-            
-            # D. Terminal State Check
-            state_file = run_path / "run_state.json"
-            if not state_file.exists():
-                errors.append("Missing run_state.json in registry.")
-            else:
-                with open(state_file, 'r') as f:
-                    state = json.load(f)
-                status = state.get("status")
-                print(f"  [+] Terminal Status: {status}")
-                if status == "PENDING":
-                    errors.append("Registry status is still PENDING.")
+            with open(state_file, 'r') as f:
+                state = json.load(f)
+            status = state.get("status")
+            print(f"  [+] Terminal Status: {status}")
+            if status == "PENDING":
+                errors.append("Registry status is still PENDING.")
 
     if not errors:
-        print(f"{GREEN}[PASS]{RESET} {case_name} followed the system protocol.")
+        print(f"{GREEN}[PASS]{RESET} {case_name} followed the Git-Native protocol.")
         return True
     else:
         print(f"{RED}[FAIL]{RESET} {case_name} protocol violations:")

@@ -1,34 +1,30 @@
-# Central Registry & State Management
+# Central Registry & Telemetry Management
 
-The Developer OS must maintain state—knowing the current iteration, tracking costs, storing feedback for the Amnesia Engine, and keeping audit logs. However, storing this state in the target project's repository creates immense friction (polluted git working trees, accidental commits, messy `.gitignore` files).
+In the Developer OS architecture, the state of the code and the artifacts (the "What") are managed natively by Git (see [Git as the State Machine](system_design.md)). 
 
-To achieve absolute separation of concerns, all orchestration state is managed in a **Central Registry**.
+However, the OS still requires a secure, isolated place to store the **Metadata and Telemetry** (the "How much" and the "Why"). Storing raw API responses, token counts, and USD cost calculations in the target project's Git repository creates immense friction.
+
+To achieve an absolute separation of concerns, all execution telemetry is managed in a **Central Registry**.
 
 ## The Hierarchy of the Registry
 
 By default, the orchestrator uses `~/.gemini/orchestrator/runs/` as the base directory. You can override this using the `--registry-base` flag.
 
-Every time `implementation_run.py` is invoked, it creates an isolated directory for that specific task:
+Every time `implement_feature.py` triggers the loop, it creates an isolated directory matching the Git branch ID:
 
 ```text
 ~/.gemini/orchestrator/runs/run_1775980593/
 ├── run_config.json       # The immutable spec/limits for the task
-├── run_state.json        # The live state machine
-├── artifacts/            # Evacuated Markdown files
-│   ├── v1_IRP.md
-│   ├── v1_QRP.md
-│   └── v2_IRP.md
-└── logs/                 # Raw API responses
+├── run_state.json        # The live telemetry (cost, API errors)
+└── logs/                 # Raw LLM thought processes
     ├── v1_doer_try1.log
     ├── v1_qa_try1.log
     └── v2_doer_try1.log
 ```
 
-## The State Machine (`run_state.json`)
+## The Telemetry Engine (`run_state.json`)
 
-The orchestrator is purely functional. If it crashes (e.g., due to a power outage), it can resume perfectly by reading the Central Registry. It does not hold state in Python memory.
-
-`run_state.json` acts as the source of truth:
+The orchestrator is purely functional. While Git holds the code state, `run_state.json` acts as the source of truth for billing and operational health:
 
 ```json
 {
@@ -52,8 +48,8 @@ The orchestrator is purely functional. If it crashes (e.g., due to a power outag
 
 ## How the Orchestrator Uses the Registry
 
-1. **Evacuation**: When an agent finishes its turn, the orchestrator immediately moves `IRP.md` from the user's workspace into the `artifacts/` folder of the registry.
-2. **Context Assembly**: When preparing the prompt for the next round, the Amnesia Engine reads `v{N}_QRP.md` directly from the registry to build the `<active_feedback>` XML payload.
-3. **Audit & Billing**: The orchestrator intercepts the token usage statistics returned by the headless wrapper (`GeminiSession.stats`), calculates the exact USD cost based on the active model, and updates the `total_cost` in `run_state.json`.
+1. **Audit & Billing**: After every LLM call, the orchestrator intercepts the token usage statistics returned by the headless wrapper (`GeminiSession.stats`), calculates the exact USD cost based on the active model, and updates `total_cost`.
+2. **Error Manifests**: If an API call fails (e.g., a 503 error), it is logged in the `api_error_manifest` so the Manager can see if the run is struggling due to external API instability.
+3. **The Thought Process**: The actual "chain of thought" output from the LLM (which is not written to the clean `IRP.md` or `QRP.md` artifacts) is saved as raw text files in the `logs/` directory. If an agent does something truly baffling, you can open the Registry logs to read its internal monologue.
 
-By treating the workspace solely as a temporary execution canvas and the Registry as the immutable brain, the Developer OS achieves true enterprise-grade isolation.
+By splitting responsibilities—Git for the Execution State, Registry for the Telemetry—the Developer OS remains both incredibly transparent and deeply observable without polluting the working codebase.

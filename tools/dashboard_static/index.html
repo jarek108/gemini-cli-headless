@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Glass - Developer OS Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@300;400;500&display=swap');
+        body { font-family: 'Fira Code', monospace; background-color: #0f172a; color: #e2e8f0; }
+        .block-manager { background-color: #3b82f6; }
+        .block-doer { background-color: #10b981; }
+        .block-qa-success { background-color: #059669; }
+        .block-qa-fail { background-color: #ef4444; }
+        .block-pending { background-color: #475569; animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .5; } }
+        .timeline-connector { height: 2px; background-color: #334155; flex-grow: 1; min-width: 20px; }
+        pre { font-size: 0.8rem; line-height: 1.2; }
+    </style>
+</head>
+<body class="h-screen flex flex-col overflow-hidden">
+    <header class="p-4 flex justify-between items-center border-b border-slate-700 bg-slate-900 shrink-0">
+        <div>
+            <h1 class="text-xl font-bold text-blue-400">THE GLASS</h1>
+            <p class="text-slate-400 text-xs uppercase tracking-widest">System Task Manager</p>
+        </div>
+        <div id="connection-status" class="text-xs px-2 py-1 rounded bg-green-900 text-green-300">
+            CONNECTED (POLLING)
+        </div>
+    </header>
+
+    <main class="flex flex-grow overflow-hidden">
+        <!-- Left Stage: Runs & Timelines -->
+        <section id="runs-container" class="w-1/2 overflow-auto p-6 space-y-6 border-r border-slate-700 bg-slate-950">
+            <div class="text-center py-20 text-slate-500 italic">No active runs found in registry...</div>
+        </section>
+
+        <!-- Right Stage: Permanent Inspector -->
+        <section id="inspector" class="w-1/2 flex flex-col bg-slate-900 overflow-hidden">
+            <div class="p-4 border-b border-slate-700 flex justify-between items-center bg-slate-800 shrink-0">
+                <h2 id="inspector-title" class="text-sm font-bold text-blue-300">SELECT A BLOCK TO INSPECT</h2>
+                <div id="inspector-meta" class="text-[10px] text-slate-400"></div>
+            </div>
+            
+            <div class="flex border-b border-slate-700 bg-slate-800 text-[10px] shrink-0">
+                <button onclick="showTab('monologue')" class="tab-btn px-4 py-2 border-b-2 border-blue-500" data-tab="monologue">THOUGHT PROCESS</button>
+                <button onclick="showTab('artifact')" class="tab-btn px-4 py-2 border-b-2 border-transparent" data-tab="artifact">ARTIFACT</button>
+                <button onclick="showTab('diff')" class="tab-btn px-4 py-2 border-b-2 border-transparent" data-tab="diff">CODE DIFF</button>
+            </div>
+
+            <div id="inspector-content" class="flex-grow overflow-auto p-4 bg-black font-mono">
+                <pre id="content-area" class="whitespace-pre-wrap text-slate-300"></pre>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        let currentRuns = {};
+        let activeInspectorRun = null;
+        let activeInspectorStep = null;
+
+        async function fetchState() {
+            try {
+                const response = await fetch('/api/runs');
+                const runs = await response.json();
+                renderRuns(runs);
+                document.getElementById('connection-status').innerText = 'CONNECTED (POLLING)';
+                document.getElementById('connection-status').className = 'text-xs px-2 py-1 rounded bg-green-900 text-green-300';
+            } catch (e) {
+                console.error("Polling error", e);
+                document.getElementById('connection-status').innerText = 'CONNECTION LOST';
+                document.getElementById('connection-status').className = 'text-xs px-2 py-1 rounded bg-red-900 text-red-300';
+            }
+        }
+
+        function renderRuns(runs) {
+            const container = document.getElementById('runs-container');
+            if (runs.length === 0) return;
+
+            // Clear if length changed significantly
+            if (Object.keys(currentRuns).length !== runs.length) {
+                container.innerHTML = '';
+            }
+
+            runs.forEach(run => {
+                let runEl = document.getElementById(`run-${run.id}`);
+                if (!runEl) {
+                    runEl = document.createElement('div');
+                    runEl.id = `run-${run.id}`;
+                    runEl.className = 'bg-slate-800 rounded-lg p-4 border border-slate-700 shadow-lg mb-6';
+                    container.prepend(runEl);
+                }
+
+                const statusColor = run.status === 'SUCCESS' ? 'text-green-400' : (run.status === 'FAILED' ? 'text-red-400' : 'text-yellow-400');
+                
+                runEl.innerHTML = `
+                    <div class="flex justify-between items-start mb-2">
+                        <div>
+                            <h3 class="font-bold text-sm text-slate-200">${run.id}</h3>
+                            <div class="text-[10px] space-x-3 mt-1 uppercase">
+                                <span class="${statusColor}">● ${run.status}</span>
+                                <span class="text-slate-400">$${run.total_cost.toFixed(4)}</span>
+                                <span class="text-slate-400">Iter: ${run.iteration}</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="flex items-center mt-4 overflow-x-auto no-scrollbar pb-2" id="timeline-${run.id}">
+                        ${renderTimeline(run)}
+                    </div>
+                `;
+                currentRuns[run.id] = run;
+            });
+        }
+
+        function renderTimeline(run) {
+            let html = '';
+            html += createBlock('manager', '📝 Specs', run.id, 0, 'success');
+
+            run.history.forEach((step, idx) => {
+                const i = step.iteration;
+                html += '<div class="timeline-connector"></div>';
+                html += createBlock('doer', `🏗️ Doer ${i}`, run.id, i, 'success');
+                html += '<div class="timeline-connector"></div>';
+                
+                const qaStatus = step.outcome === 'final' ? 'success' : 'fail';
+                const qaLabel = step.outcome === 'final' ? `✅ QA ${i}` : `❌ QA ${i}`;
+                html += createBlock('qa', qaLabel, run.id, i, qaStatus);
+            });
+
+            if (run.status === 'PENDING') {
+                html += '<div class="timeline-connector"></div>';
+                html += `<div class="w-20 h-10 rounded flex items-center justify-center text-[10px] font-bold block-pending text-white">...</div>`;
+            }
+
+            return html;
+        }
+
+        function createBlock(role, label, runId, iter, status) {
+            const isSelected = activeInspectorRun === runId && activeInspectorStep?.role === role && activeInspectorStep?.iter === iter;
+            const statusClass = status === 'success' ? `block-${role}${role === 'qa' ? '-success' : ''}` : `block-qa-fail`;
+            const borderClass = isSelected ? 'ring-2 ring-white ring-offset-2 ring-offset-slate-900' : '';
+            
+            return `
+                <div onclick="inspect('${runId}', '${role}', ${iter})" 
+                     class="w-24 h-10 rounded shadow-md flex items-center justify-center text-[10px] font-bold cursor-pointer hover:opacity-80 transition-all ${statusClass} text-white shrink-0 ${borderClass}">
+                    ${label}
+                </div>
+            `;
+        }
+
+        async function inspect(runId, role, iter) {
+            activeInspectorRun = runId;
+            activeInspectorStep = { role, iter };
+            
+            document.getElementById('inspector-title').innerText = `${runId} > ${role.toUpperCase()} v${iter}`;
+            
+            // Re-render timelines to update selection ring
+            renderRuns(Object.values(currentRuns));
+            
+            showTab(document.querySelector('.tab-btn.border-blue-500').dataset.tab);
+        }
+
+        async function showTab(tab) {
+            if (!activeInspectorRun) return;
+
+            const runId = activeInspectorRun;
+            const { role, iter } = activeInspectorStep;
+            const contentArea = document.getElementById('content-area');
+            
+            document.querySelectorAll('.tab-btn').forEach(b => {
+                b.classList.remove('border-blue-500');
+                b.classList.add('border-transparent');
+                if(b.dataset.tab === tab) b.classList.add('border-blue-500');
+            });
+
+            contentArea.innerText = 'FETCHING DATA...';
+
+            let endpoint = '';
+            if (tab === 'monologue') {
+                endpoint = `/api/log/${runId}/${role}_v${iter}`;
+            } else if (tab === 'artifact') {
+                endpoint = `/api/artifact/${runId}/${role}_v${iter}`;
+            } else if (tab === 'diff') {
+                endpoint = `/api/diff/${runId}/${role}_v${iter}`;
+            }
+
+            try {
+                const res = await fetch(endpoint);
+                const text = await res.text();
+                contentArea.innerText = text;
+                contentArea.scrollTop = 0;
+            } catch (e) {
+                contentArea.innerText = 'ERROR: ' + e.message;
+            }
+        }
+
+        setInterval(fetchState, 1000);
+        fetchState();
+    </script>
+</body>
+</html>

@@ -1,14 +1,13 @@
 """
-Autonomous Implementation Orchestrator v2 (Central Registry & Amnesia)
+Autonomous Implementation Orchestrator v2 (Git-Native State Machine)
 """
 
 import os
 import json
 import shutil
 import time
-import hashlib
 import argparse
-import logging
+import subprocess
 from pathlib import Path
 from typing import List, Dict, Optional
 from gemini_cli_headless import run_gemini_cli_headless, GeminiSession
@@ -26,6 +25,15 @@ PRICING = {
     "gemini-3-pro": {"input": 3.50, "output": 10.50, "cached": 0.875},
     "gemini-3-flash": {"input": 0.075, "output": 0.30, "cached": 0.01875}
 }
+
+# --- Git Helpers ---
+
+def git_commit(workspace: str, message: str):
+    try:
+        subprocess.run(["git", "add", "."], cwd=workspace, check=True)
+        subprocess.run(["git", "commit", "--allow-empty", "-m", message], cwd=workspace, check=True)
+    except Exception as e:
+        print(f"[WARNING] Git commit failed: {e}")
 
 # --- Cost Calculation ---
 
@@ -58,23 +66,15 @@ def load_template(path: str, **kwargs) -> str:
         content = content.replace(f"{{{{{key}}}}}", str(val))
     return content
 
-def get_historical_context(registry_path: str, artifact_type: str, count: int) -> str:
-    if count <= 0: return ""
-    artifacts_dir = os.path.join(registry_path, "artifacts")
-    if not os.path.exists(artifacts_dir): return ""
+def get_accumulative_context(workspace: str, artifact_type: str) -> str:
+    """Reads the current artifact from workspace to provide accumulative history."""
+    path = os.path.join(workspace, f"{artifact_type}.md")
+    if not os.path.exists(path): return ""
     
-    files = sorted([f for f in os.listdir(artifacts_dir) if f'_{artifact_type}.md' in f], reverse=True)
-    selected = files[:count]
+    with open(path, 'r', encoding='utf-8') as f:
+        content = f.read()
     
-    context = []
-    for f in reversed(selected):
-        round_num = f.split('_')[0].strip('v')
-        with open(os.path.join(artifacts_dir, f), 'r', encoding='utf-8') as file:
-            content = file.read()
-        context.append(f'<{artifact_type} round="{round_num}">\n{content}\n</{artifact_type}>')
-    
-    if not context: return ""
-    return f"\n<historical_feedback type=\"{artifact_type}\">\n" + "\n".join(context) + "\n</historical_feedback>\n"
+    return f"\n<historical_feedback type=\"{artifact_type}\" mode=\"accumulative\">\n{content}\n</historical_feedback>\n"
 
 # --- State & Config Management ---
 
@@ -119,13 +119,11 @@ def update_stats(state: Dict, session: GeminiSession, model_id: str):
 
 def get_project_context(workspace: str) -> str:
     context = []
-    # 1. Primary Project Knowledge: GEMINI.md
     gemini_path = os.path.join(workspace, "GEMINI.md")
     if os.path.exists(gemini_path):
         with open(gemini_path, 'r', encoding='utf-8') as f:
             context.append(f"<project_context>\n{f.read()}\n</project_context>")
     
-    # 2. Supporting Project Knowledge: designs/
     designs_dir = os.path.join(workspace, "designs")
     if os.path.exists(designs_dir):
         design_files = [f for f in os.listdir(designs_dir) if f.endswith('.md')]
@@ -142,42 +140,21 @@ def get_project_context(workspace: str) -> str:
 
 from tools.validate_artifact import validate_artifact
 
-# --- Constants & Defaults ---
-
 DEFAULT_SCHEMAS_DIR = os.path.join(os.path.dirname(__file__), "schemas")
-
-# --- Git Utilities ---
-
-def is_git_clean(workspace: str) -> bool:
-    try:
-        res = subprocess.run(["git", "status", "--porcelain"], cwd=workspace, capture_output=True, text=True, check=True)
-        return res.stdout.strip() == ""
-    except:
-        return True # Not a git repo or git not found
-
-def git_stage_all(workspace: str):
-    subprocess.run(["git", "add", "."], cwd=workspace, check=True)
 
 # --- Main Logic ---
 
 def run_implementation(workspace: str, config: Dict):
     workspace = os.path.abspath(workspace)
     
-    # 0. Git Gate
-    if config.get("git_gate", False):
-        if not is_git_clean(workspace):
-            print(f"ERROR: Workspace is not clean. Commit or stash changes before running.")
-            return
-
-    # 1. Enforce Layer 2 Artifact Presence
     irq_path = os.path.join(workspace, "IRQ.md")
     qar_path = os.path.join(workspace, "QAR.md")
     
     if not os.path.exists(irq_path):
-        print(f"ERROR: IRQ.md (Implementation Request) not found in {workspace}")
+        print(f"ERROR: IRQ.md not found in {workspace}")
         return
     if not os.path.exists(qar_path):
-        print(f"ERROR: QAR.md (QA Request) not found in {workspace}")
+        print(f"ERROR: QAR.md not found in {workspace}")
         return
 
     with open(irq_path, 'r', encoding='utf-8') as f:
@@ -185,38 +162,27 @@ def run_implementation(workspace: str, config: Dict):
     with open(qar_path, 'r', encoding='utf-8') as f:
         qar_content = f.read()
 
-    # 1. Setup Registry
+    # 1. Setup Registry (Telemetry Only)
     run_id = config.get("run_id", f"run_{int(time.time())}")
     registry_path = os.path.join(config.get("registry_base", DEFAULT_REGISTRY_BASE), run_id)
-    artifacts_dir = os.path.join(registry_path, "artifacts")
     logs_dir = os.path.join(registry_path, "logs")
-    os.makedirs(artifacts_dir, exist_ok=True)
     os.makedirs(logs_dir, exist_ok=True)
 
-    # 2. Save effective config
     with open(os.path.join(registry_path, "run_config.json"), 'w', encoding='utf-8') as f:
         json.dump(config, f, indent=2)
 
     state = load_run_state(registry_path)
     if state["status"] in ["SUCCESS", "ABORTED", "DEADLOCK"]:
-        print(f"Task already has terminal status: {state['status']}")
+        print(f"Task already terminal: {state['status']}")
         return
 
-    # Config params
     mem = config.get("memory_and_context", {})
     tmpl = config.get("templates_and_prompts", {})
-    
     max_iters = config.get("max_iters", 3)
     model_doer = config.get("doer_model", "gemini-3-flash-preview")
     model_qa = config.get("qa_model", "gemini-3-flash-preview")
 
-    # Load Layer 3 (Project Brain)
-    print(f"[INFO] Loading Layer 3 Context (GEMINI.md, designs/)...")
     project_context = get_project_context(workspace)
-    if project_context:
-        print(f"  [+] Layer 3 Context loaded successfully.")
-    else:
-        print(f"  [!] No Layer 3 Context found.")
 
     for i in range(state["iteration"] + 1, max_iters + 1):
         state["iteration"] = i
@@ -224,21 +190,19 @@ def run_implementation(workspace: str, config: Dict):
 
         # --- PHASE 1: DOER ---
         print(f"[DOER] Working (Model: {model_doer})...")
-        print(f"  [Context] Injecting IRQ.md and Layer 3...")
         
-        # Build Context
         doer_prompt = load_template(tmpl.get("doer_prompt_path", os.path.join(DEFAULT_TEMPLATES_DIR, "roles/doer_prompt.md")))
-        irp_template = load_template(tmpl.get("irp_template_path", os.path.join(DEFAULT_TEMPLATES_DIR, "artifacts/irp_template.md")), round=i, last_qrp=f"v{i-1}_QRP.md" if i > 1 else "None")
+        irp_template = load_template(tmpl.get("irp_template_path", os.path.join(DEFAULT_TEMPLATES_DIR, "artifacts/irp_template.md")), round=i, last_qrp="QRP.md" if os.path.exists(os.path.join(workspace, "QRP.md")) else "None")
         
-        history_qrp = get_historical_context(registry_path, "QRP", mem.get("doer_past_qrp_count", 1))
-        history_irp = get_historical_context(registry_path, "IRP", mem.get("doer_past_irp_count", 0))
+        # Accumulative Feedback from existing QRP/IRP
+        history_context = get_accumulative_context(workspace, "QRP")
+        history_context += get_accumulative_context(workspace, "IRP")
         
         full_prompt = f"{doer_prompt}\n\n<execution_artifacts>\n<IRQ>\n{irq_content}\n</IRQ>\n</execution_artifacts>\n\n"
         full_prompt += project_context
-        full_prompt += f"\n\n<active_feedback>\n{history_qrp}\n{history_irp}\n</active_feedback>\n\n"
+        full_prompt += f"\n\n<active_feedback>\n{history_context}\n</active_feedback>\n\n"
         full_prompt += f"<template id=\"irp\">\n{irp_template}\n</template>\n\nGo."
 
-        # Session Amnesia
         session_id = None
         if mem.get("doer_amnesia_frequency", 1) != 1:
             session_id = f"{run_id}_doer_cont"
@@ -251,13 +215,11 @@ def run_implementation(workspace: str, config: Dict):
                 f.write(session.text)
             
             if os.path.exists(irp_local): break
-            print(f"  [!] Missing IRP.md. Reprimanding (Attempt {retry+1})...")
+            print(f"  [!] Missing IRP.md. Reprimanding...")
             full_prompt = f"ERROR: You did not create IRP.md. You MUST use your tools to write IRP.md to the workspace root.\n\n{full_prompt}"
 
         if os.path.exists(irp_local):
-            irp_dest = os.path.join(artifacts_dir, f"v{i}_IRP.md")
-            shutil.move(irp_local, irp_dest)
-            print(f"  [+] Artifact moved to registry: v{i}_IRP.md")
+            git_commit(workspace, f"[DOER] Iteration {i}: Implementation")
         else:
             state["status"] = "ABORTED"
             state["error"] = "Doer failed to produce IRP.md"
@@ -270,14 +232,14 @@ def run_implementation(workspace: str, config: Dict):
         qa_prompt = load_template(tmpl.get("qa_prompt_path", os.path.join(DEFAULT_TEMPLATES_DIR, "roles/qa_prompt.md")))
         qrp_template = load_template(tmpl.get("qrp_template_path", os.path.join(DEFAULT_TEMPLATES_DIR, "artifacts/qrp_template.md")), round=i)
         
-        # QA sees the latest IRP and history
-        current_irp = get_historical_context(registry_path, "IRP", 1) # Always see current
-        history_qrp_qa = get_historical_context(registry_path, "QRP", mem.get("qa_past_qrp_count", 2))
-        
+        # QA sees the current implementation report and accumulated history
+        with open(irp_local, 'r', encoding='utf-8') as f:
+            current_irp_content = f.read()
+            
         full_prompt_qa = f"{qa_prompt}\n\n<execution_artifacts>\n<IRQ>\n{irq_content}\n</IRQ>\n<QAR>\n{qar_content}\n</QAR>\n</execution_artifacts>\n\n"
         full_prompt_qa += project_context
-        full_prompt_qa += f"\n\n<historical_feedback>\n{history_qrp_qa}\n</historical_feedback>\n\n"
-        full_prompt_qa += f"<current_implementation>\n{current_irp}\n</current_implementation>\n\n"
+        full_prompt_qa += f"\n\n<historical_feedback>\n{get_accumulative_context(workspace, 'QRP')}\n</historical_feedback>\n\n"
+        full_prompt_qa += f"<current_implementation>\n{current_irp_content}\n</current_implementation>\n\n"
         full_prompt_qa += f"<template id=\"qrp\">\n{qrp_template}\n</template>\n\nVerify."
 
         session_id_qa = None
@@ -293,60 +255,50 @@ def run_implementation(workspace: str, config: Dict):
                 f.write(session.text)
             
             if os.path.exists(qrp_local):
-                # Validate Schema
                 valid, errors = validate_artifact(qrp_local, qrp_schema)
-                if valid:
-                    break
+                if valid: break
                 else:
-                    print(f"  [!] Invalid QRP.md. Reprimanding (Attempt {retry+1})...")
-                    full_prompt_qa = f"ERROR: Your QRP.md failed validation:\n" + "\n".join([f"- {e}" for e in errors]) + f"\n\nPlease correct the QRP.md file.\n\n{full_prompt_qa}"
+                    full_prompt_qa = f"ERROR: Your QRP.md failed validation:\n" + "\n".join([f"- {e}" for e in errors]) + f"\n\nPlease correct it.\n\n{full_prompt_qa}"
             else:
-                print(f"  [!] Missing QRP.md. Reprimanding (Attempt {retry+1})...")
-                full_prompt_qa = f"ERROR: You did not create QRP.md. You MUST use your tools to write QRP.md to the workspace root.\n\n{full_prompt_qa}"
+                full_prompt_qa = f"ERROR: You did not create QRP.md. You MUST use your tools to write QRP.md.\n\n{full_prompt_qa}"
 
         if os.path.exists(qrp_local):
-            qrp_dest = os.path.join(artifacts_dir, f"v{i}_QRP.md")
-            shutil.move(qrp_local, qrp_dest)
-            print(f"  [+] Artifact moved to registry: v{i}_QRP.md")
+            with open(qrp_local, 'r', encoding='utf-8') as f:
+                content = f.read().lower()
+                outcome = "to correct"
+                if "outcome: final" in content: outcome = "final"
+                elif "outcome: blocked" in content: outcome = "blocked"
+            
+            git_commit(workspace, f"[QA] Iteration {i}: {outcome.upper()}")
+            state["history"].append({"iteration": i, "outcome": outcome})
+            save_run_state(registry_path, state)
+
+            if outcome == "final":
+                print(f"SUCCESS: Approved at iteration {i}")
+                state["status"] = "SUCCESS"
+                break
+            elif outcome == "blocked":
+                print(f"BLOCKED at iteration {i}")
+                state["status"] = "BLOCKED"
+                break
         else:
             state["status"] = "ABORTED"
             state["error"] = "QA failed to produce QRP.md"
             save_run_state(registry_path, state)
             break
 
-        # Parse Outcome from registry file
-        with open(qrp_dest, 'r', encoding='utf-8') as f:
-            content = f.read()
-            outcome = "to correct"
-            if "outcome: final" in content.lower(): outcome = "final"
-            elif "outcome: blocked" in content.lower(): outcome = "blocked"
-
-        state["history"].append({"iteration": i, "outcome": outcome})
-        save_run_state(registry_path, state)
-
-        if outcome == "final":
-            print(f"SUCCESS: Approved at iteration {i}")
-            state["status"] = "SUCCESS"
-            break
-        elif outcome == "blocked":
-            print(f"BLOCKED at iteration {i}")
-            state["status"] = "BLOCKED"
-            break
-
     if state["status"] == "PENDING":
         state["status"] = "FAILED"
     
     save_run_state(registry_path, state)
-    
-    # Report
     print(f"\n--- RUN FINISHED: {state['status']} ---")
-    print(f"Registry: {registry_path}")
+    print(f"Registry (Telemetry): {registry_path}")
     print(f"Total Cost: ${state['total_cost']:.4f}")
-    print(f"API Requests: {state['total_api_requests']} (Errors: {state['total_api_errors']})")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--workspace", required=True)
+    parser.add_argument("--run-id", help="Explicit run ID for telemetry and branching")
     parser.add_argument("--config-file", help="Path to config JSON file")
     parser.add_argument("--doer-model", help="Override Doer model")
     parser.add_argument("--qa-model", help="Override QA model")
@@ -359,13 +311,11 @@ if __name__ == "__main__":
         "doer_model": "gemini-3-flash-preview",
         "qa_model": "gemini-3-flash-preview",
         "max_iters": 3,
+        "run_id": args.run_id,
+        "workspace": args.workspace,
         "memory_and_context": {
             "doer_amnesia_frequency": 1,
-            "qa_amnesia_frequency": 1,
-            "doer_past_qrp_count": 1,
-            "doer_past_irp_count": 0,
-            "qa_past_qrp_count": 2,
-            "qa_past_irp_count": 1
+            "qa_amnesia_frequency": 1
         }
     }
     
