@@ -172,33 +172,32 @@ def _execute_single_run(
         temp_dir = os.path.join(os.path.expanduser("~"), ".gemini", "tmp", project_name, "run")
         os.makedirs(temp_dir, exist_ok=True)
 
-        if allowed_tools is not None or allowed_paths is not None:
-            tools_whitelist = allowed_tools if allowed_tools is not None else DEFAULT_ALLOWED_TOOLS
-            paths_whitelist = allowed_paths if allowed_paths is not None else [cwd if cwd else os.getcwd()]
-            if temp_dir not in paths_whitelist and "*" not in paths_whitelist:
-                paths_whitelist.append(temp_dir)
+        tools_whitelist = allowed_tools if allowed_tools is not None else DEFAULT_ALLOWED_TOOLS
+        paths_whitelist = allowed_paths if allowed_paths is not None else [cwd if cwd else os.getcwd()]
+        if temp_dir not in paths_whitelist and "*" not in paths_whitelist:
+            paths_whitelist.append(temp_dir)
             
-            policy_lines = []
-            if tools_whitelist != ["*"]:
-                policy_lines.append("tools:")
-                policy_lines.append("  - name: \"*\"")
-                policy_lines.append("    action: deny")
-                for tool in tools_whitelist:
-                    policy_lines.append(f"  - name: \"{tool}\"")
-                    policy_lines.append("    action: allow")
+        policy_lines = []
+        if tools_whitelist != ["*"]:
+            policy_lines.append("tools:")
+            policy_lines.append("  - name: \"*\"")
+            policy_lines.append("    action: deny")
+            for tool in tools_whitelist:
+                policy_lines.append(f"  - name: \"{tool}\"")
+                policy_lines.append("    action: allow")
             
-            if paths_whitelist != ["*"]:
-                policy_lines.append("fileSystem:")
-                policy_lines.append("  allowedPaths:")
-                for p in paths_whitelist:
-                    abs_p = os.path.abspath(p).replace('\\', '/')
-                    policy_lines.append(f"    - \"{abs_p}\"")
+        if paths_whitelist != ["*"]:
+            policy_lines.append("fileSystem:")
+            policy_lines.append("  allowedPaths:")
+            for p in paths_whitelist:
+                abs_p = os.path.abspath(p).replace('\\', '/')
+                policy_lines.append(f"    - \"{abs_p}\"")
             
-            if policy_lines:
-                with tempfile.NamedTemporaryFile(mode='w', suffix=".yaml", dir=temp_dir, delete=False, encoding='utf-8') as tf:
-                    tf.write("\n".join(policy_lines))
-                    policy_path = tf.name
-                cmd.extend(["--policy", policy_path])
+        if policy_lines:
+            with tempfile.NamedTemporaryFile(mode='w', suffix=".yaml", dir=temp_dir, delete=False, encoding='utf-8') as tf:
+                tf.write("\n".join(policy_lines))
+                policy_path = tf.name
+            cmd.extend(["--policy", policy_path])
 
         with tempfile.NamedTemporaryFile(mode='w', suffix=".txt", dir=temp_dir, delete=False, encoding='utf-8') as tf:
             tf.write(prompt)
