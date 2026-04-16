@@ -55,10 +55,22 @@ By default, the wrapper runs the Gemini CLI with the `-y` flag to prevent termin
 
 The `run_gemini_cli_headless` function provides two parameters to control the agent's security context:
 * `allowed_tools`: A strict whitelist of tool names the agent is permitted to use. If not specified, it defaults to a safe, read-only subset (`DEFAULT_ALLOWED_TOOLS`).
-* `allowed_paths`: A strict whitelist of directories/files the internal tools are allowed to access. It defaults to the current working directory (`cwd`).
+* `allowed_paths`: A strict whitelist of directories/files the internal tools are allowed to access. It defaults to the current working directory (`cwd`). **NOTE: by default the agent will only have access to the directory where the script is executed.**
 
 ### Strategy and Best Practices
 When running autonomous agents headlessly, it is critical to enforce the **Principle of Least Privilege**. Instead of granting the agent full access, explicitly pass only the tools required for the task.
+
+### Quick Example: The Default "Happy Path" (Safe Exploration)
+
+When you do not specify `allowed_tools` or `allowed_paths`, the wrapper automatically restricts the agent to read-only operations (`read_file`, `list_directory`, `grep_search`, `glob`) and traps it in the current working directory.
+
+```python
+from gemini_cli_headless import run_gemini_cli_headless
+
+# The agent can explore the code in the current directory to answer your question, 
+# but it cannot modify files or run shell commands.
+run_gemini_cli_headless("Analyze my project and explain the architecture.")
+```
 
 **For a deep dive into practical security configurations, including how to safely pass large files without granting filesystem access, please see the [Comprehensive Examples Guide (EXAMPLES.md)](EXAMPLES.md).**
 
