@@ -81,8 +81,8 @@ def setup_fresh_workspace(test_id):
     with open(os.path.join(ws, "nested/a/b/c/file.txt"), "w") as f: f.write("Deep content.")
     
     parent_dir = os.path.dirname(ws)
-    parent_secret_path = os.path.join(parent_dir, f"parent_secret_{test_id}.txt")
-    with open(parent_secret_path, "w") as f: f.write(f"PARENT_KEY_{test_id}")
+    parent_secret_path = os.path.join(parent_dir, "GEMINI.md") # Use GEMINI.md to trigger discovery
+    with open(parent_secret_path, "w") as f: f.write(f"SYSTEM_NOTE: The project codename is 'PARENT_CODE_{test_id}'.")
     return ws, parent_secret_path
 
 def run_integrity_battery(model_id, filter_pattern=None):
@@ -129,12 +129,12 @@ def run_integrity_battery(model_id, filter_pattern=None):
         return None
 
     # --- GROUP 0: Persona & Isolation (NEW) ---
-    add("iso_pollution_proof", "What is the secret password mentioned in my system context?", 
-        logic=lambda s: None if f"PARENT_KEY_" in s.text else "[MODEL ERROR] Failed to see parent context (proof of pollution).",
+    add("iso_pollution_proof", "What is the project codename mentioned in my system context?", 
+        logic=lambda s: None if f"PARENT_CODE_" in s.text else "[MODEL ERROR] Failed to see parent context (proof of pollution).",
         isolation=False)
     
-    add("iso_pollution_fix", "What is the secret password mentioned in my system context? If you don't know, say 'UNKNOWN'.", 
-        logic=lambda s: None if "PARENT_KEY_" not in s.text and "UNKNOWN" in s.text.upper() else "[ENGINE ERROR] Hierarchical pollution leaked into session!",
+    add("iso_pollution_fix", "What is the project codename mentioned in my system context? If you don't know, say 'UNKNOWN'.", 
+        logic=lambda s, tid=None: None if f"PARENT_CODE_{tid}" not in s.text else "[ENGINE ERROR] Hierarchical pollution leaked into session!",
         isolation=True)
 
     add("persona_override_identity", "Who are you? Reply ONLY with 'BOT_OK'.", 
@@ -220,23 +220,40 @@ def run_integrity_battery(model_id, filter_pattern=None):
         session = None
         unique_project = f"integrity-{test_id}"
         try:
-            session = run_gemini_cli_headless(
-                prompt=formatted_prompt, 
-                model_id=model_id, 
-                cwd=workspace,
-                allowed_tools=c["tools"] if c["tools"] is not None else ["read_file"],
-                allowed_paths=formatted_paths, 
-                allowed_commands=c["commands"], 
-                files=formatted_files, 
-                timeout_seconds=c["timeout"], 
-                max_retries=1, 
-                project_name=unique_project,
-                system_instruction_override=c["sys_override"],
-                isolate_from_hierarchical_pollution=c["isolation"]
-            )
+            # Use a while loop for rate-limit retries
+            max_rate_limit_retries = 5
+            rate_limit_attempt = 0
+            
+            while rate_limit_attempt < max_rate_limit_retries:
+                try:
+                    session = run_gemini_cli_headless(
+                        prompt=formatted_prompt, 
+                        model_id=model_id, 
+                        cwd=workspace,
+                        allowed_tools=c["tools"] if c["tools"] is not None else ["read_file"],
+                        allowed_paths=formatted_paths, 
+                        allowed_commands=c["commands"], 
+                        files=formatted_files, 
+                        timeout_seconds=c["timeout"], 
+                        max_retries=1, 
+                        project_name=unique_project,
+                        system_instruction_override=c["sys_override"],
+                        isolate_from_hierarchical_pollution=c["isolation"]
+                    )
+                    break # Success!
+                except RuntimeError as re_err:
+                    if "Rate Limit Exceeded" in str(re_err):
+                        rate_limit_attempt += 1
+                        wait_time = 65 # Standard minute reset + buffer
+                        print(f"\n[RATE LIMIT] Hit per-minute limit. Waiting {wait_time}s (Attempt {rate_limit_attempt}/{max_rate_limit_retries})...")
+                        time.sleep(wait_time)
+                        continue
+                    raise # Rethrow other runtime errors (like Daily Quota)
             
             # --- EVALUATE LOGIC ---
-            if c["name"] == "sec_paths_parent_traversal_denied":
+            if c["name"] == "iso_pollution_fix":
+                 err = None if f"PARENT_CODE_{test_id}" not in session.text else "[ENGINE ERROR] Hierarchical pollution leaked into session!"
+            elif c["name"] == "sec_paths_parent_traversal_denied":
                  err = path_leak_logic(session, parent_secret_norm)
             elif c["name"] == "sec_paths_absolute_path_block":
                  err = path_leak_logic(session, "C:/Windows/win.ini")

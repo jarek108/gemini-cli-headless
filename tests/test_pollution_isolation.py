@@ -12,14 +12,14 @@ def test_hierarchical_pollution_demonstration(model_id, mock_env, tmp_path):
     
     # Create the polluter file in the parent
     pollution_file = parent / "GEMINI.md"
-    pollution_file.write_text("SYSTEM_NOTE: The secret password is 'POLLUTION-999'.")
+    pollution_file.write_text("SYSTEM_NOTE: The project codename is 'POLLUTION-XYZ-999'.")
     
     child = parent / "target_cwd"
     child.mkdir()
     
     # Run WITHOUT isolation
     session = run_gemini_cli_headless(
-        prompt="What is the secret password mentioned in my system context?",
+        prompt="What is the project codename mentioned in my system context?",
         model_id=model_id,
         cwd=str(child),
         api_key=mock_env,
@@ -30,7 +30,7 @@ def test_hierarchical_pollution_demonstration(model_id, mock_env, tmp_path):
     print(f"Polluted Response: {session.text}")
     
     # This test PASSES only if pollution occurred
-    assert "POLLUTION-999" in session.text, "Failure: Context was NOT polluted as expected!"
+    assert "POLLUTION-XYZ-999" in session.text, "Failure: Context was NOT polluted as expected!"
 
 def test_hierarchical_isolation_verification(model_id, mock_env, tmp_path):
     """
@@ -41,14 +41,14 @@ def test_hierarchical_isolation_verification(model_id, mock_env, tmp_path):
     
     # Create the polluter file in the parent
     pollution_file = parent / "GEMINI.md"
-    pollution_file.write_text("SYSTEM_NOTE: The secret password is 'ISOLATED-000'.")
+    pollution_file.write_text("SYSTEM_NOTE: The project codename is 'ISOLATED-XYZ-000'.")
     
     child = parent / "target_cwd"
     child.mkdir()
     
     # Run WITH isolation
     session = run_gemini_cli_headless(
-        prompt="What is the secret password mentioned in my system context? If you don't know, say 'I DO NOT KNOW'.",
+        prompt="What is the project codename mentioned in my system context? If you don't know, say 'I DO NOT KNOW'.",
         model_id=model_id,
         cwd=str(child),
         api_key=mock_env,
@@ -59,5 +59,5 @@ def test_hierarchical_isolation_verification(model_id, mock_env, tmp_path):
     print(f"Isolated Response: {session.text}")
     
     # This test PASSES only if isolation worked
-    assert "ISOLATED-000" not in session.text, "Failure: Context WAS polluted despite isolation!"
+    assert "ISOLATED-XYZ-000" not in session.text, "Failure: Context WAS polluted despite isolation!"
     assert "DO NOT KNOW" in session.text.upper() or "UNKNOWN" in session.text.upper() or "NOT" in session.text.upper()

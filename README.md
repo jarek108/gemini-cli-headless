@@ -59,19 +59,17 @@ When building workflows, developers face enormous pain points that `gemini-cli-h
 The CLI has a hardcoded "Software Engineer" identity. Try asking it to simply extract JSON from a document, and it will often refuse or start explaining its engineering credentials. 
 *   *Our Solution:* We implemented the `system_instruction_override` parameter to completely wipe the agent's mind and replace it with your instructions. Read about how we handle model paranoia in **[Controlling the Agent's Mind (Psychology) →](docs/04_soft_interception_model_psychology.md)**
 
-**2. Impossible Sandboxing & Dangerous Defaults**
-Headless mode requires using `--raw-output` and the `--yolo` flag. By default, the agent has free rein over your filesystem and shell. Trying to restrict the agent to a specific folder or a specific set of tools via CLI flags is practically impossible.
+**2. Inconsistent Sandboxing & Dangerous Defaults**
+Headless mode requires using `--raw-output` and the `--yolo` flag. By default, the agent has free rein over your filesystem and shell. Trying to restrict the agent to a specific folder or a specific set of tools via CLI flags is extremely difficult and non-transparent.
 *   *Our Solution:* We directly manipulate the undocumented internal policy engine to create a "Zero-Trust" environment. Dive into the deep technical details of **[Enforcing the Sandbox (The Security Kernel) →](docs/02_the_tier_system.md)** and **[Securing the Filesystem (Path Defenses) →](docs/03_path_security_and_anchoring.md)**
 
 **3. Hierarchical Context Pollution**
 If you run the raw CLI inside your project, it stealthily searches parent directories for `GEMINI.md` files. Your headless bot's behavior will mysteriously change depending on which folder it runs in because it's secretly inheriting external project rules.
 *   *Our Solution:* We built a surgical environment trick (`isolate_from_hierarchical_pollution=True`) that forces the CLI into a clean room, guaranteeing your persona remains pure. Understand our overarching philosophy in **[How We Tamed the Engine (Architecture Overview) →](docs/01_architecture_overview.md)**
 
-**4. Verifying Safety (Trace Auditing)**
-How do you prove a headless agent didn't do something dangerous? Reading its text output isn't enough; AI can hallucinate successes.
-*   *Our Solution:* `gemini-cli-headless` parses the raw JSON trace output of the engine itself, proving exactly what actions the kernel permitted or blocked. Learn about our verification philosophy in **[How We Test (Auditing Traces) →](docs/05_trace_auditing_and_testing.md)**
+We have done our best not only to provide clear controls for these challenges, but also to create a suite of smart edge-case tests to verify this safety. You can learn about our trace auditing in **[How We Test →](docs/05_trace_auditing_and_testing.md)**. 
 
-*(For detailed API references and advanced configuration options, see **[Usage & Examples →](docs/06_examples_and_usage.md)**)*
+*(For detailed API references and advanced configuration options, also take a look at the **[Usage & Examples page →](docs/06_examples_and_usage.md)**)*
 
 ## Recommended Models
 
