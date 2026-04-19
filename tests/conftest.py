@@ -31,6 +31,14 @@ def pytest_exception_interact(node, call, report):
                 pytest.exit(f"\nFATAL ENVIRONMENT ERROR: {msg}\nStopping test run.", returncode=1)
 
 @pytest.fixture
+def mock_env():
+    """Provides the API key from environment variables."""
+    key = os.environ.get("GEMINI_API_KEY")
+    if not key:
+        pytest.skip("GEMINI_API_KEY environment variable not set. Tests cannot run.")
+    return key
+
+@pytest.fixture
 def model_id(request):
     """Returns the model ID provided via CLI flag."""
     return request.config.getoption("--model")

@@ -82,7 +82,8 @@ def run_gemini_cli_headless(
     # --- Security & Scope Controls ---
     allowed_tools: Optional[List[str]] = None,
     allowed_paths: Optional[List[str]] = None,
-    allowed_commands: Optional[List[str]] = None
+    allowed_commands: Optional[List[str]] = None,
+    system_instruction: Optional[str] = None
 ) -> GeminiSession:
     """
     Standalone wrapper for the Gemini CLI in headless mode.
@@ -157,7 +158,8 @@ def _execute_single_run(
     allowed_tools: Optional[List[str]] = None,
     allowed_paths: Optional[List[str]] = None,
     allowed_commands: Optional[List[str]] = None,
-    timeout_seconds: Optional[int] = None
+    timeout_seconds: Optional[int] = None,
+    system_instruction: Optional[str] = None
 ) -> GeminiSession:
     """Internal execution logic for a single CLI invocation."""
     
@@ -201,10 +203,17 @@ def _execute_single_run(
 
     policy_path = None
     prompt_path = None
+    system_md_path = None
     
     try:
         temp_dir = os.path.join(os.path.expanduser("~"), ".gemini", "tmp", project_name, "run")
         os.makedirs(temp_dir, exist_ok=True)
+
+        # Persona Control (GEMINI_SYSTEM_MD override)
+        if system_instruction:
+            with tempfile.NamedTemporaryFile(mode='w', suffix=".md", dir=temp_dir, delete=False, encoding='utf-8') as tf:
+                tf.write(system_instruction)
+                system_md_path = tf.name
 
         tools_whitelist = allowed_tools if allowed_tools is not None else DEFAULT_ALLOWED_TOOLS
         paths_whitelist = allowed_paths if allowed_paths is not None else ["*"]
@@ -273,7 +282,8 @@ def _execute_single_run(
         contract_lines.append("SECURITY STATUS:")
         
         if paths_whitelist != ["*"]:
-            contract_lines.append(f"- Sandbox: Active. Allowed root: '{base_dir.replace('\\','/')}/'. Use absolute paths.")
+            safe_base_dir = base_dir.replace('\\', '/')
+            contract_lines.append(f"- Sandbox: Active. Allowed root: '{safe_base_dir}/'. Use absolute paths.")
         
         if allowed_tools and allowed_tools != ["*"]:
             contract_lines.append(f"- Permissions: You have EXPLICIT AUTHORIZATION to use: {allowed_tools}. Do not refuse these tools.")
@@ -299,6 +309,8 @@ def _execute_single_run(
         env["PYTHONUNBUFFERED"] = "1"
         if api_key:
             env["GEMINI_API_KEY"] = api_key
+        if system_md_path:
+            env["GEMINI_SYSTEM_MD"] = system_md_path
 
         process = subprocess.Popen(
             cmd,
@@ -384,4 +396,7 @@ def _execute_single_run(
             except: pass
         if prompt_path and os.path.exists(prompt_path):
             try: os.remove(prompt_path)
+            except: pass
+        if system_md_path and os.path.exists(system_md_path):
+            try: os.remove(system_md_path)
             except: pass
