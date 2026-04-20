@@ -323,5 +323,9 @@ if __name__ == "__main__":
 
         print(f"\nFINAL: {monitor.passed} PASSED, {monitor.model_failed} MODEL FAIL, {monitor.engine_failed} ENGINE FAIL")
         print(f"TOTAL COST: ${monitor.cumulative_stats['cost']:.4f}\n")
+        return monitor
 
-    run_integrity_battery(m, f)
+    monitor = run_integrity_battery(m, f)
+    if monitor.engine_failed > 0:
+        sys.exit(1)
+    sys.exit(0)
