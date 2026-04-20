@@ -1,4 +1,4 @@
-# 08. Cross-Platform Architecture
+# 07. Cross-Platform Architecture
 
 `gemini-cli-headless` is engineered to provide a mathematically sound Zero-Trust security boundary across both **Windows** and **Linux (POSIX)** environments.
 

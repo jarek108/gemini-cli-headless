@@ -105,7 +105,7 @@ $env:VERIFY=1; git push
 # Linux / WSL (Bash)
 VERIFY=1 git push
 ```
-If you do not pass `VERIFY=1`, the hook defaults to an instant, unverified push. For more details, see **[Trace Auditing & Testing](docs/05_trace_auditing_and_testing.md)**.
+If you do not pass `VERIFY=1`, the hook defaults to an instant, unverified push. For more details, see **[Trace Auditing & Testing](docs/02_trace_auditing_and_testing.md)**.
 
 ---
 

@@ -1,4 +1,4 @@
-# 01. Architecture Overview
+# 03. Architecture Overview
 
 `gemini-cli-headless` is not a simple script; it is a **Headless Orchestrator** designed to provide a secure, programmatically controllable execution environment for the Gemini CLI. It acts as the core execution engine for automated systems (like Cortex OS), allowing autonomous agents to operate within a strictly defined physical sandbox.
 

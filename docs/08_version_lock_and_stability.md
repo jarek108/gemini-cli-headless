@@ -1,4 +1,4 @@
-# 07. Version Lock & System Brittleness
+# 08. Version Lock & System Brittleness
 
 `gemini-cli-headless` achieves its enterprise-grade security by operating as a "parasitic" orchestrator. Rather than relying solely on the public, documented CLI flags, it deeply exploits the undocumented internal mechanics and physics of the Gemini CLI's policy engine.
 

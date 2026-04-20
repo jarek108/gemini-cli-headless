@@ -1,4 +1,4 @@
-# 05. Trace Auditing & Testing Philosophy
+# 02. Trace Auditing & Testing Philosophy
 
 Verifying the integrity of an AI wrapper is fundamentally different from testing standard software. The model's non-deterministic nature requires a paradigm shift in how we assert "Success" and "Failure."
 

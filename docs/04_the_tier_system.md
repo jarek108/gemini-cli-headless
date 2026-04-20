@@ -1,4 +1,4 @@
-# 02. The Tier System & Priority Caps
+# 04. The Tier System & Priority Caps
 
 To understand how `gemini-cli-headless` enforces its rules, you must understand the internal "physics" of the Gemini CLI policy engine. The engine does not treat all rules equally; it uses a strict **Tier System** combined with a **Priority Formula**.
 

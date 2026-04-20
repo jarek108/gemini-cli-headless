@@ -1,4 +1,4 @@
-# 06. Usage & Examples
+# 01. Usage & Examples
 
 `gemini-cli-headless` provides a single, powerful function: `run_gemini_cli_headless()`. It allows you to orchestrate the Gemini CLI programmatically while enforcing strict security boundaries.
 

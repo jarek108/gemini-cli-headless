@@ -1,4 +1,4 @@
-# 03. Path Security & Structural Anchoring
+# 05. Path Security & Structural Anchoring
 
 Path-based security is notoriously difficult in LLM tool calling. A model might try to inject an unauthorized path into a different parameter (e.g., hiding `"C:/secret.txt"` inside the `content` argument of a `write_file` call).
 

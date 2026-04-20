@@ -1,4 +1,4 @@
-# 04. Soft Interception & Model Psychology
+# 06. Soft Interception & Model Psychology
 
 Enforcing physical security is only half the battle. If the orchestrator blocks an action, the model must understand *why* it was blocked so it can recover. Furthermore, the model must not be so intimidated by the security rules that it refuses to act at all (the "Alignment Trap").
 
