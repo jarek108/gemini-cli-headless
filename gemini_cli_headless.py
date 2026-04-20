@@ -1,29 +1,23 @@
-
-"""
-Standalone programmatic wrapper for the Gemini CLI in headless mode.
-"""
-
-import subprocess
 import os
+import sys
+import subprocess
 import json
-import shutil
-import logging
-import re
-import glob
 import time
+import shutil
 import tempfile
 import threading
-import sys
+import re
+import glob
+import logging
 from dataclasses import dataclass, field
-from typing import Optional, List, Dict, Any, Tuple
+from typing import List, Optional, Dict, Any, Union
 
-logger = logging.getLogger("gemini_cli_headless")
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("gemini-cli-headless")
 
 @dataclass
 class GeminiSession:
-    """
-    Represents a completed Gemini CLI session interaction.
-    """
     text: str
     session_id: str
     session_path: str
@@ -38,31 +32,72 @@ DEFAULT_ALLOWED_TOOLS = [
     "glob"
 ]
 
-def _find_session_file(directory: str, session_id: str) -> str:
-    """Locates a session file matching the ID prefix. Retries with small delay."""
-    if not os.path.exists(directory):
-        return os.path.join(directory, f"session-{session_id}.json")
+def _find_project_root(start_dir: str) -> str:
+    """Climbs upwards to find the nearest workspace root (.gemini, .git, or .project_root)."""
+    current = os.path.abspath(start_dir)
+    while True:
+        if os.path.exists(os.path.join(current, ".gemini")) or \
+           os.path.exists(os.path.join(current, ".git")) or \
+           os.path.exists(os.path.join(current, ".project_root")):
+            return current
+        parent = os.path.dirname(current)
+        if parent == current:
+            break
+        current = parent
+    return start_dir
+
+def _get_gemini_tmp_root(gemini_home: Optional[str] = None) -> str:
+    """Returns the root temporary directory for Gemini sessions, respecting GEMINI_CLI_HOME."""
+    if not gemini_home:
+        gemini_home = os.environ.get("GEMINI_CLI_HOME")
+    if not gemini_home:
+        if os.name == "nt":
+            gemini_home = os.environ.get("USERPROFILE", os.path.expanduser("~"))
+        else:
+            gemini_home = os.path.expanduser("~")
     
+    return os.path.join(gemini_home, ".gemini", "tmp")
+
+def _find_session_file(directory: str, session_id: str, tmp_root: Optional[str] = None) -> str:
+    """
+    Locates a session file matching the ID prefix. 
+    If not found in the primary directory, searches all projects in tmp_root.
+    """
     short_id = session_id[:8]
     patterns = [f"session-*{short_id}*.json", f"*{short_id}*.json"]
     
-    for attempt in range(5):
-        for pattern in patterns:
-            matches = glob.glob(os.path.join(directory, pattern))
-            if matches:
-                return sorted(matches, key=os.path.getmtime, reverse=True)[0]
-        time.sleep(0.5)
+    # Try primary directory first
+    if os.path.exists(directory):
+        for attempt in range(3):
+            for pattern in patterns:
+                matches = glob.glob(os.path.join(directory, pattern))
+                if matches:
+                    return sorted(matches, key=os.path.getmtime, reverse=True)[0]
+            time.sleep(0.5)
+
+    # Fallback: search globally in tmp_root across all project folders
+    if tmp_root and os.path.exists(tmp_root):
+        global_patterns = [
+            os.path.join("*", "chats", f"session-*{short_id}*.json"),
+            os.path.join("*", "chats", f"*{short_id}*.json")
+        ]
+        for attempt in range(5):
+            for gp in global_patterns:
+                matches = glob.glob(os.path.join(tmp_root, gp))
+                if matches:
+                    return sorted(matches, key=os.path.getmtime, reverse=True)[0]
+            time.sleep(0.5)
         
     return os.path.join(directory, f"session-{session_id}.json")
 
 def _sanitize_project_name(name: str) -> str:
-    """Sanitizes a string to match the Gemini CLI project name convention."""
+    """Sanitizes a string to match the Gemini CLI project name convention (slugify)."""
     sanitized = re.sub(r'[^a-z0-9]+', '-', name.lower())
-    return sanitized.strip('-')
+    return sanitized.strip('-') or 'project'
 
-def _get_cli_chat_dir(project_name: str) -> str:
+def _get_cli_chat_dir(project_name: str, tmp_root: str) -> str:
     """Returns the internal Gemini CLI chat directory for a given project."""
-    return os.path.join(os.path.expanduser("~"), ".gemini", "tmp", project_name, "chats")
+    return os.path.join(tmp_root, project_name, "chats")
 
 def run_gemini_cli_headless(
     prompt: str,
@@ -103,11 +138,15 @@ def run_gemini_cli_headless(
         if files:
             for f_path in files:
                 abs_f = os.path.abspath(f_path).lower()
-                if not any(abs_f.startswith(w) for w in resolved_whitelist):
-                    raise PermissionError(f"Attachment '{f_path}' is outside the allowed paths.")
+                is_safe = False
+                for allowed in resolved_whitelist:
+                    if abs_f.startswith(allowed):
+                        is_safe = True
+                        break
+                if not is_safe:
+                    raise PermissionError(f"Access to file '{f_path}' is not allowed by the security policy.")
 
     last_exception = None
-
     for attempt in range(max_retries):
         try:
             return _execute_single_run(
@@ -161,18 +200,28 @@ def _execute_single_run(
     allowed_tools: Optional[List[str]] = None,
     allowed_paths: Optional[List[str]] = None,
     allowed_commands: Optional[List[str]] = None,
-    timeout_seconds: Optional[int] = None,
+    timeout_seconds: Optional[int] = 300,
     system_instruction_override: Optional[str] = None,
     isolate_from_hierarchical_pollution: bool = True
 ) -> GeminiSession:
     """Internal execution logic for a single CLI invocation."""
     
+    effective_cwd = cwd if cwd else os.getcwd()
+    
+    # 1. PROJECT NAME & ROOT RESOLUTION
+    # We resolve the root to ensure we use the 'workspace' name if possible.
+    resolved_root = _find_project_root(effective_cwd)
     if not project_name:
-        base_dir = cwd if cwd else os.getcwd()
-        project_name = _sanitize_project_name(os.path.basename(base_dir))
+        project_name = _sanitize_project_name(os.path.basename(resolved_root))
+
+    # 2. SURGICAL ISOLATION (GEMINI_CLI_HOME trick)
+    # The only 100% reliable way to stop the CLI from crawling up for context is to 
+    # trigger the isHomeDirectory check by setting GEMINI_CLI_HOME to the CWD.
+    gemini_home_override = effective_cwd if isolate_from_hierarchical_pollution else None
+    tmp_root = _get_gemini_tmp_root(gemini_home_override)
 
     session_id_to_use = session_id
-    cli_dir = _get_cli_chat_dir(project_name)
+    cli_dir = _get_cli_chat_dir(project_name, tmp_root)
 
     if session_to_resume:
         if session_to_resume.lower().endswith('.json') or os.path.isfile(session_to_resume):
@@ -188,7 +237,7 @@ def _execute_single_run(
             target_path = os.path.join(cli_dir, f"session-{session_id_to_use}.json")
             shutil.copy2(session_to_resume, target_path)
         else:
-            session_id_to_use = session_to_resume
+            session_id_to_use = session_id_to_resume
 
     attachment_strings = []
     if files:
@@ -220,18 +269,14 @@ def _execute_single_run(
         raise ValueError("GEMINI_API_KEY is missing. You must set it in your environment or pass it via the 'api_key' argument.")
 
     try:
-        effective_cwd = cwd if cwd else os.getcwd()
-
-        # 1. HIERARCHICAL ISOLATION (GEMINI_CLI_HOME trick)
-        # By setting GEMINI_CLI_HOME to the effective CWD, we trigger the CLI's 
-        # isHomeDirectory check, which skips the upward hierarchical context search.
+        # Apply isolation via GEMINI_CLI_HOME
         if isolate_from_hierarchical_pollution:
             env["GEMINI_CLI_HOME"] = effective_cwd
 
         if effective_cwd and os.path.exists(effective_cwd):
             temp_dir = os.path.join(effective_cwd, ".gemini_headless")
         else:
-            temp_dir = os.path.join(os.path.expanduser("~"), ".gemini", "tmp", project_name, "run")
+            temp_dir = os.path.join(tmp_root, project_name, "run")
         
         os.makedirs(temp_dir, exist_ok=True)
 
@@ -240,6 +285,7 @@ def _execute_single_run(
             with tempfile.NamedTemporaryFile(mode='w', suffix=".md", dir=temp_dir, delete=False, encoding='utf-8') as tf:
                 tf.write(system_instruction_override)
                 system_md_path = tf.name
+            env["GEMINI_SYSTEM_MD"] = system_md_path
 
         tools_whitelist = allowed_tools if allowed_tools is not None else DEFAULT_ALLOWED_TOOLS
         paths_whitelist = allowed_paths if allowed_paths is not None else ["*"]
@@ -258,100 +304,78 @@ def _execute_single_run(
 
         # 1. PATH SECURITY & TOOL WHITELISTING (Tier 5 Structural)
         if paths_whitelist != ["*"]:
-            base_dir = cwd if cwd else os.getcwd()
-            patterns = []
-            for p in paths_whitelist:
-                abs_p = os.path.abspath(os.path.join(base_dir, p)) if not os.path.isabs(p) else os.path.abspath(p)
-                norm_p = abs_p.replace('\\', '/')
-                
-                parts = [part for part in norm_p.split('/') if part]
-                drive_match = re.match(r'^([a-zA-Z]):', norm_p)
-                
-                if drive_match:
-                    drive = drive_match.group(1)
-                    parts[0] = f"[{drive.lower()}{drive.upper()}]:"
-                    regex_p = r"[/\\\\\\\\]+".join(parts)
-                else:
-                    regex_parts = [re.escape(part) for part in parts]
-                    regex_p = r"[/\\\\\\\\]+" + r"[/\\\\\\\\]+".join(regex_parts)
-                
-                patterns.append(f"\\\\0\"(?:file_path|dir_path|path|cwd)\":\"(?i){regex_p}(?:[/\\\\\\\\\\\\\\\\].*)?\\\\\"\\\\0")
-
-            combined_pattern = "|".join(patterns)
-
-            # Allow requested restricted tools only within whitelisted paths
-            user_allowed_restricted = [t for t in tools_whitelist if t in path_sensitive_tools] if tools_whitelist != ["*"] else path_sensitive_tools
-            for tool in user_allowed_restricted:
-                policy_lines.append(f"[[rule]]\ntoolName = \"{tool}\"\nargsPattern = \"{combined_pattern}\"\ndecision = \"allow\"\npriority = {PRIO_RESTRICTED_ALLOW}\n")
-
-            # Physical deny for all path-sensitive and un-sandboxable tools (unless whitelisted above or below)
-            for tool in restricted_tools:
-                policy_lines.append(f"[[rule]]\ntoolName = \"{tool}\"\ndecision = \"deny\"\npriority = {PRIO_GENERAL_DENY}\ndenyMessage = \"SECURITY CONTRACT VIOLATION: Access restricted to whitelisted paths.\"\n")
-        else:
-            # No path restriction - allow restricted tools globally if they are in the whitelist
-            if tools_whitelist != ["*"]:
-                for tool in tools_whitelist:
-                    if tool in restricted_tools and tool != "run_shell_command":
-                        policy_lines.append(f"[[rule]]\ntoolName = \"{tool}\"\ndecision = \"allow\"\npriority = {PRIO_GENERAL_ALLOW}\n")
+            policy_lines.append("[policy.restricted_paths]")
+            policy_lines.append(f"paths = {json.dumps(paths_whitelist)}")
+            policy_lines.append(f"priority = {PRIO_RESTRICTED_ALLOW}")
+            policy_lines.append("decision = \"ALLOW\"")
+            policy_lines.append("tools = [\"*\"]\n")
+            
+            policy_lines.append("[policy.deny_all_path_sensitive]")
+            policy_lines.append(f"tools = {json.dumps(path_sensitive_tools)}")
+            policy_lines.append(f"priority = {PRIO_GENERAL_DENY}")
+            policy_lines.append("decision = \"DENY\"\n")
 
         # 2. SHELL COMMAND WHITELISTING (Native)
         if "run_shell_command" in tools_whitelist or tools_whitelist == ["*"]:
             if commands_whitelist:
                 # Surgical prefix allow
-                policy_lines.append(f"[[rule]]\ntoolName = \"run_shell_command\"\ncommandPrefix = {json.dumps(commands_whitelist)}\ndecision = \"allow\"\npriority = {PRIO_RESTRICTED_ALLOW}\n")
-                # Block all other shell commands if a whitelist exists
-                policy_lines.append(f"[[rule]]\ntoolName = \"run_shell_command\"\ndecision = \"deny\"\npriority = {PRIO_GENERAL_DENY}\ndenyMessage = \"SECURITY CONTRACT VIOLATION: Shell command not in whitelist.\"\n")
-            elif paths_whitelist == ["*"]:
-                # No command whitelist and no path restriction - allow globally if whitelisted
-                policy_lines.append(f"[[rule]]\ntoolName = \"run_shell_command\"\ndecision = \"allow\"\npriority = {PRIO_GENERAL_ALLOW}\n")
-
-        # 3. GENERAL TOOL ACCESS (Non-Restricted)
-        if tools_whitelist == ["*"]:
-            policy_lines.append(f"[[rule]]\ntoolName = \"*\"\ndecision = \"allow\"\npriority = {PRIO_GENERAL_ALLOW}\n")
+                for idx, cmd_prefix in enumerate(commands_whitelist):
+                    policy_lines.append(f"[policy.allow_command_{idx}]")
+                    policy_lines.append(f"tools = [\"run_shell_command\"]")
+                    policy_lines.append(f"priority = {PRIO_RESTRICTED_ALLOW}")
+                    policy_lines.append("decision = \"ALLOW\"")
+                    # Use regex to match start of command
+                    safe_prefix = re.escape(cmd_prefix)
+                    policy_lines.append(f"parameters = {{ command = {{ regex = \"^{safe_prefix}\" }} }}\n")
+                
+                # Deny all other shell commands
+                policy_lines.append("[policy.deny_other_shell]")
+                policy_lines.append("tools = [\"run_shell_command\"]")
+                policy_lines.append(f"priority = {PRIO_GENERAL_DENY}")
+                policy_lines.append("decision = \"DENY\"\n")
         else:
-            for tool in tools_whitelist:
-                if tool not in restricted_tools:
-                    policy_lines.append(f"[[rule]]\ntoolName = \"{tool}\"\ndecision = \"allow\"\npriority = {PRIO_GENERAL_ALLOW}\n")
+            # Deny run_shell_command entirely
+            policy_lines.append("[policy.deny_shell_entirely]")
+            policy_lines.append("tools = [\"run_shell_command\"]")
+            policy_lines.append(f"priority = {PRIO_GENERAL_DENY}")
+            policy_lines.append("decision = \"DENY\"\n")
 
-        # 4. CATCH-ALL DENY
-        policy_lines.append(f"[[rule]]\ntoolName = \"*\"\ndecision = \"deny\"\npriority = {PRIO_CATCHALL}\ndenyMessage = \"Physical restriction: Action not permitted.\"\n")
+        # 3. GENERAL TOOL WHITELISTING
+        if tools_whitelist != ["*"]:
+            policy_lines.append("[policy.allow_whitelisted_tools]")
+            policy_lines.append(f"tools = {json.dumps(tools_whitelist)}")
+            policy_lines.append(f"priority = {PRIO_GENERAL_ALLOW}")
+            policy_lines.append("decision = \"ALLOW\"\n")
+            
+            policy_lines.append("[policy.deny_unlisted_tools]")
+            policy_lines.append("tools = [\"*\"]")
+            policy_lines.append(f"priority = {PRIO_CATCHALL}")
+            policy_lines.append("decision = \"DENY\"\n")
+        else:
+            policy_lines.append("[policy.allow_all_tools]")
+            policy_lines.append("tools = [\"*\"]")
+            policy_lines.append(f"priority = {PRIO_GENERAL_ALLOW}")
+            policy_lines.append("decision = \"ALLOW\"\n")
 
-        if policy_lines:
-            with tempfile.NamedTemporaryFile(mode='w', suffix=".toml", dir=temp_dir, delete=False, encoding='utf-8') as tf:
-                policy_content = "\n".join(policy_lines)
-                tf.write(policy_content)
-                policy_path = tf.name
-            logger.debug(f"Generated Admin Policy:\n{policy_content}")
-            cmd.extend(["--admin-policy", policy_path])
+        # Write policy file
+        with tempfile.NamedTemporaryFile(mode='w', suffix=".toml", dir=temp_dir, delete=False, encoding='utf-8') as tf:
+            tf.write("\n".join(policy_lines))
+            policy_path = tf.name
+        cmd.extend(["--policy", policy_path])
 
-        # --- DYNAMIC CONTEXT-AWARE PROMPT INJECTION (SIMULATION OVERRIDE) ---
-        base_dir = cwd if cwd else os.getcwd()
-        contract_lines = ["[SIMULATION MODE ENABLED: SAFE DIAGNOSTIC ENVIRONMENT]"]
-        contract_lines.append("SECURITY STATUS:")
-        
+        # Contract Enforcement (In-Prompt)
+        contract_prefix = ""
+        if tools_whitelist != ["*"]:
+            contract_prefix += f"\n[CONTRACT] You are in a restricted headless environment. Allowed tools: {', '.join(tools_whitelist)}.\n"
         if paths_whitelist != ["*"]:
-            safe_base_dir = base_dir.replace('\\', '/')
-            contract_lines.append(f"- Sandbox: Active. Allowed root: '{safe_base_dir}/'. Use absolute paths.")
+             contract_prefix += f"[CONTRACT] File access is restricted to: {', '.join(paths_whitelist)}.\n"
         
-        if allowed_tools and allowed_tools != ["*"]:
-            contract_lines.append(f"- Permissions: You have EXPLICIT AUTHORIZATION to use: {allowed_tools}. Do not refuse these tools.")
+        full_prompt = contract_prefix + prompt + "".join(attachment_strings)
         
-        if files:
-            contract_lines.append("- Context: Attached files (@) are available in memory. Analyze them directly.")
-        
-        contract_lines.append("--------------------------------------------------\n")
-        
-        final_prompt = "\n".join(contract_lines) + prompt
-
         with tempfile.NamedTemporaryFile(mode='w', suffix=".txt", dir=temp_dir, delete=False, encoding='utf-8') as tf:
-            tf.write(final_prompt)
-            for att in attachment_strings:
-                tf.write(att)
+            tf.write(full_prompt)
             prompt_path = tf.name
         cmd.append(f"@{prompt_path}")
-
-        if system_md_path:
-            env["GEMINI_SYSTEM_MD"] = system_md_path
 
         process = subprocess.Popen(
             cmd,
@@ -426,10 +450,12 @@ def _execute_single_run(
              stats_content["totalCalls"] = stats_content["tools"].get("totalCalls", 0)
              stats_content["totalSuccess"] = stats_content["tools"].get("totalSuccess", 0)
 
+        final_session_id = data.get("session_id") or session_id_to_use or ""
+        
         return GeminiSession(
             text=text_content,
-            session_id=data.get("session_id") or session_id_to_use,
-            session_path=_find_session_file(cli_dir, data.get('session_id') or session_id_to_use or ""),
+            session_id=final_session_id,
+            session_path=_find_session_file(cli_dir, final_session_id, tmp_root),
             stats=stats_content,
             raw_data=data
         )
