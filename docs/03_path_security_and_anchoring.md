@@ -1,8 +1,15 @@
-# 04. Path Security & Structural Anchoring
+# 03. Path Security & Structural Anchoring
 
-Path-based security is notoriously difficult in LLM tool calling. A model might try to inject an unauthorized path into a different parameter (e.g., hiding `"C:/secret.txt"` inside the `content` argument of a `write_file` call).
+Path-based security is notoriously difficult in LLM tool calling. If an AI agent has the ability to read or write files, preventing it from escaping its designated sandbox is critical.
 
-To counter this, `gemini-cli-headless` utilizes an undocumented feature of the Gemini CLI engine: **Null-Byte Structural Anchoring**.
+## The Problems with Vanilla Path Security
+
+If you try to run the raw Gemini CLI headlessly and restrict its file access, you face two massive security vulnerabilities:
+
+1.  **Parameter Injection (The Sibling Trap):** An LLM outputs raw JSON for tool calls. A malicious or hallucinating model might try to bypass a naive path filter (e.g., `path: "/safe/.*"`) by hiding a forbidden path inside a different parameter that isn't being checked. For example, it might emit `{"content": "{\"path\":\"/secret/passwd\"}"}` for a `write_file` call, tricking the parser.
+2.  **Relative Path Traversal:** If you simply whitelist a directory like `/project/src`, the model can easily escape by requesting `../../secret_keys.env`. If the engine resolves this path *after* checking the policy (or vice versa), the sandbox is physically breached.
+
+To counter these vulnerabilities without relying on fragile string parsing, `gemini-cli-headless` utilizes an undocumented feature of the Gemini CLI engine: **Null-Byte Structural Anchoring**.
 
 ## The Internal Physics: `stableStringify`
 

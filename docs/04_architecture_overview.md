@@ -1,4 +1,4 @@
-# 03. High-Level Architecture Overview
+# 04. High-Level Architecture Overview
 
 `gemini-cli-headless` is not a simple script; it is a **Headless Orchestrator** designed to provide a secure, programmatically controllable execution environment for the Gemini CLI. 
 
@@ -22,7 +22,7 @@ The orchestrator enforces security across three distinct domains:
 
 ### 1. The Physical Sandbox (Tier 4 Policy)
 This is the "unbreakable" layer. It uses the underlying Gemini CLI policy engine to intercept tool calls. It is OS-agnostic and relies on structural anchoring to prevent injection attacks.
-*   *Detail:* See **[04. Path Security & Anchoring](04_path_security_and_anchoring.md)** and **[05. The Tier System](05_the_tier_system.md)**.
+*   *Detail:* See **[03. Path Security & Anchoring](03_path_security_and_anchoring.md)** and **[05. The Tier System](05_the_tier_system.md)**.
 
 ### 2. The Contextual Sandbox (Hierarchical Isolation)
 To prevent the agent from being "confused" by existing workspace files or history, the orchestrator surgically isolates the CLI using environment variables (`GEMINI_CLI_HOME` and `GEMINI_SYSTEM_MD`).
