@@ -261,12 +261,30 @@ def _execute_single_run(
             for p in paths_whitelist:
                 abs_p = os.path.abspath(os.path.join(base_dir, p)) if not os.path.isabs(p) else os.path.abspath(p)
                 norm_p = abs_p.replace('\\', '/')
-                path_parts = [re.escape(part) for part in norm_p.split('/') if part]
-                if path_parts and len(path_parts[0]) == 2 and path_parts[0][1] == ':':
-                    d = path_parts[0][0]
-                    path_parts[0] = f"[{d.lower()}{d.upper()}]:"
-                regex_p = r"[/\\\\\\\\]+".join(path_parts)
-                patterns.append(f"\\\\0\"(?:file_path|dir_path|path|cwd)\":\"(?i){regex_p}")
+                
+                # Standardize and escape path parts
+                # We split by / and remove empty parts
+                parts = [part for part in norm_p.split('/') if part]
+                
+                # Identify if we are on Windows (drive letter at start)
+                drive_match = re.match(r'^([a-zA-Z]):', norm_p)
+                
+                if drive_match:
+                    # Windows Drive logic
+                    drive = drive_match.group(1)
+                    # The first part is the drive (e.g. C:). We replace it with a case-insensitive drive regex.
+                    # Note: parts[0] is 'C:' because drive_match matched the start of norm_p
+                    parts[0] = f"[{drive.lower()}{drive.upper()}]:"
+                    regex_p = r"[/\\\\\\\\]+".join(parts)
+                else:
+                    # Linux / POSIX logic (must start with a separator)
+                    regex_parts = [re.escape(part) for part in parts]
+                    regex_p = r"[/\\\\\\\\]+" + r"[/\\\\\\\\]+".join(regex_parts)
+                
+                # The regex should match the path as a directory (with / or \ after) or as the exact file/dir.
+                # We anchor it with \0 at the start and the end of the JSON property to be safe.
+                # Regex: \0"key":"(?i)regex_p(?:[/\\].*)?"\0
+                patterns.append(f"\\\\0\"(?:file_path|dir_path|path|cwd)\":\"(?i){regex_p}(?:[/\\\\\\\\\\\\\\\\].*)?\\\\\"\\\\0")
 
             combined_pattern = "|".join(patterns)
 
