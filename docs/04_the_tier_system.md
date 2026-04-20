@@ -34,14 +34,14 @@ During an audit of the CLI's internal `toml-loader.ts`, we discovered a critical
 
 Early iterations of `gemini-cli-headless` attempted to enforce rules using `priority = 70000`. Because this exceeded the schema cap, the rules were silently dropped, and the engine defaulted to its lower-tier behaviors.
 
-## The Solution: The "Tier 5 Structural Kernel"
+## The Solution: The "Tier 4 Structural Kernel"
 
-To achieve a 100% unbreakable sandbox, `gemini-cli-headless` mounts its dynamically generated TOML rules using the **`--admin-policy`** flag (Tier 5), while keeping internal TOML priorities strictly between `0` and `999`.
+To achieve a 100% unbreakable sandbox, `gemini-cli-headless` mounts its dynamically generated TOML rules using the **`--policy`** flag (Tier 4), while keeping internal TOML priorities strictly between `0` and `999`.
 
 ### Why this matters
 
-By occupying the ultimate Tier 5 layer, we prevent two massive attack vectors:
-1.  **The Malicious Prompt:** An agent cannot prompt the engine into a YOLO state, because our Tier 5 rules explicitly DENY actions that lack a specific ALLOW rule.
-2.  **The Rogue Workspace:** If the orchestrator runs an agent in an untrusted directory containing a malicious `.gemini/settings.json` (Tier 3) attempting to grant global access, our Tier 5 Admin Policy will immediately override it.
+By occupying the Tier 4 layer, we prevent two massive attack vectors:
+1.  **The Malicious Prompt:** An agent cannot prompt the engine into a YOLO state, because our Tier 4 rules explicitly DENY actions that lack a specific ALLOW rule.
+2.  **The Rogue Workspace:** If the orchestrator runs an agent in an untrusted directory containing a malicious `.gemini/settings.json` (Tier 3) attempting to grant global access, our Tier 4 User Policy will immediately override it.
 
-We are not "hacking" the CLI; we are leveraging its highest intended security mechanism.
+We are not "hacking" the CLI; we are leveraging its highest accessible programmatic security mechanism.

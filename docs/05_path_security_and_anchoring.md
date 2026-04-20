@@ -43,4 +43,4 @@ The final hurdle is path normalization. The CLI engine matches the `argsPattern`
 If we whitelist `C:/project/`, the model could bypass our regex simply by requesting `"../other_project/"`—the regex wouldn't match `C:/project/`, so it would fall through to our Catch-All DENY. While secure, this causes the task to fail unnecessarily.
 
 **The Fix:**
-We enforce an **Absolute Path Contract** via the system prompt (see `04_soft_interception_model_psychology.md`). The model is strictly instructed to always use fully resolved, absolute paths. This ensures the raw strings match our structural regex perfectly, allowing legitimate actions to pass while traversal attacks (`../`) are physically blocked.
+We enforce an **Absolute Path Contract** via the system prompt (see `06_soft_interception_model_psychology.md`). The model is strictly instructed to always use fully resolved, absolute paths. This ensures the raw strings match our structural regex perfectly, allowing legitimate actions to pass while traversal attacks (`../`) are physically blocked.

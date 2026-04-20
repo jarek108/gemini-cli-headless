@@ -21,7 +21,7 @@ Currently, the policy engine matches our `argsPattern` regex against the *raw* s
 *   **The Break:** If a future version of the CLI begins normalizing paths (e.g., converting `../` to absolute paths or standardizing Windows `\` to `/`) *before* running the policy check, our strict regexes may fail to match legitimate tool calls, or worse, relative path attacks might suddenly bypass our absolute-path filters.
 
 #### 3. Zod Schema Validation (Priority Caps)
-Our rules are mounted as `--admin-policy` (Tier 5) with internal priorities specifically kept between `0` and `999`. This is because the internal `toml-loader.ts` uses a strict Zod schema that silently drops rules with priorities outside this range.
+Our rules are mounted as `--policy` (Tier 4) with internal priorities specifically kept between `0` and `999`. This is because the internal `toml-loader.ts` uses a strict Zod schema that silently drops rules with priorities outside this range.
 *   **The Break:** If the schema is updated—perhaps changing the priority limits, adding new mandatory fields, or altering how `commandPrefix` lists are parsed—our dynamically generated TOML files will be silently rejected. The engine will revert to weak default permissions without throwing a visible error.
 
 ## Mitigation Strategy

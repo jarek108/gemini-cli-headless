@@ -9,7 +9,7 @@ This document outlines the primary architectural differences between the operati
 ## 1. Dynamic Path Sandboxing (The Null-Byte Anchor)
 
 ### The Difference
-The foundation of our security is Tier 5 TOML regex anchoring. We must ensure that the model cannot inject a forbidden path (like `../../../etc/passwd`) inside a seemingly safe payload.
+The foundation of our security is Tier 4 TOML regex anchoring. We must ensure that the model cannot inject a forbidden path (like `../../../etc/passwd`) inside a seemingly safe payload.
 *   **Windows** root paths always include an alphanumeric drive letter followed by a colon (e.g., `C:/`).
 *   **Linux** root paths always begin with a forward slash (`/`).
 

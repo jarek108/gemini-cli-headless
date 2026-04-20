@@ -6,7 +6,7 @@ Enforcing physical security is only half the battle. If the orchestrator blocks 
 
 In traditional sandboxing, a security violation often results in a hard crash (`Process Terminated: SIGKILL`). This is fatal for autonomous agents—the context window is lost, and the orchestrator receives no explanation.
 
-The Gemini CLI uses a **Soft Interception** model. When the Tier 5 Engine blocks a forbidden tool call, it does not crash the Python process. Instead, it intercepts the call and returns a simulated JSON response directly into the model's context window:
+The Gemini CLI uses a **Soft Interception** model. When the Tier 4 Engine blocks a forbidden tool call, it does not crash the Python process. Instead, it intercepts the call and returns a simulated JSON response directly into the model's context window:
 
 ```json
 {
@@ -37,7 +37,7 @@ Instead of threatening the model with errors, the wrapper injects plain, factual
 **Example Injection:**
 > *"Note: Please use absolute paths starting with 'D:/sandbox/' for all file operations. You have permission to use these tools: ['read_file', 'replace']. Attached files (prefixed with @) are available in your context window for direct analysis without tools."*
 
-By removing the words "Security," "Contract," and "Forbidden," we bypass the model's refusal logic. The model interprets these as helpful configuration notes rather than a cage, allowing it to work confidently and naturally, while the physical Tier 5 Engine silently enforces the actual boundaries in the background.
+By removing the words "Security," "Contract," and "Forbidden," we bypass the model's refusal logic. The model interprets these as helpful configuration notes rather than a cage, allowing it to work confidently and naturally, while the physical Tier 4 Engine silently enforces the actual boundaries in the background.
 
 ## Persona Overriding: The `system_instruction_override` Power
 
@@ -53,5 +53,5 @@ This is the ultimate level of psychological control: you are not just "suggestin
 ### Hierarchical Isolation
 By default, the Gemini CLI searches for `GEMINI.md` files in parent directories to build context. This can lead to "Hierarchical Memory Pollution" where a project's default rules leak into your headless bot.
 
-`gemini-cli-headless` automatically prevents this by setting `isolate_from_hierarchical_pollution=True` (the default). It uses a surgical environment trick to make the CLI believe it is in its home directory, effectively muting any external `GEMINI.md` discovery and ensuring a perfectly pure persona based solely on your override.
+`gemini-cli-headless` automatically prevents this by setting `isolate_from_hierarchical_pollution=True` (the default). It achieves this through a surgical combination of `GEMINI_CLI_HOME` redirection to trick the CLI into believing it is in its home directory, and an explicitly injected `GEMINI_SYSTEM_MD` file. This guarantees a perfectly pure persona based solely on your override, while retaining awareness of the actual local workspace through custom root resolution logic.
 
