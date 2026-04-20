@@ -254,7 +254,7 @@ def _execute_single_run(
         un_sandboxable_tools = ["run_shell_command", "web_fetch"]
         restricted_tools = path_sensitive_tools + un_sandboxable_tools
 
-        # 1. PATH SECURITY (Tier 5 Structural)
+        # 1. PATH SECURITY & TOOL WHITELISTING (Tier 5 Structural)
         if paths_whitelist != ["*"]:
             base_dir = cwd if cwd else os.getcwd()
             patterns = []
@@ -262,45 +262,48 @@ def _execute_single_run(
                 abs_p = os.path.abspath(os.path.join(base_dir, p)) if not os.path.isabs(p) else os.path.abspath(p)
                 norm_p = abs_p.replace('\\', '/')
                 
-                # Standardize and escape path parts
-                # We split by / and remove empty parts
                 parts = [part for part in norm_p.split('/') if part]
-                
-                # Identify if we are on Windows (drive letter at start)
                 drive_match = re.match(r'^([a-zA-Z]):', norm_p)
                 
                 if drive_match:
-                    # Windows Drive logic
                     drive = drive_match.group(1)
-                    # The first part is the drive (e.g. C:). We replace it with a case-insensitive drive regex.
-                    # Note: parts[0] is 'C:' because drive_match matched the start of norm_p
                     parts[0] = f"[{drive.lower()}{drive.upper()}]:"
                     regex_p = r"[/\\\\\\\\]+".join(parts)
                 else:
-                    # Linux / POSIX logic (must start with a separator)
                     regex_parts = [re.escape(part) for part in parts]
                     regex_p = r"[/\\\\\\\\]+" + r"[/\\\\\\\\]+".join(regex_parts)
                 
-                # The regex should match the path as a directory (with / or \ after) or as the exact file/dir.
-                # We anchor it with \0 at the start and the end of the JSON property to be safe.
-                # Regex: \0"key":"(?i)regex_p(?:[/\\].*)?"\0
                 patterns.append(f"\\\\0\"(?:file_path|dir_path|path|cwd)\":\"(?i){regex_p}(?:[/\\\\\\\\\\\\\\\\].*)?\\\\\"\\\\0")
 
             combined_pattern = "|".join(patterns)
 
+            # Allow requested restricted tools only within whitelisted paths
             user_allowed_restricted = [t for t in tools_whitelist if t in path_sensitive_tools] if tools_whitelist != ["*"] else path_sensitive_tools
             for tool in user_allowed_restricted:
                 policy_lines.append(f"[[rule]]\ntoolName = \"{tool}\"\nargsPattern = \"{combined_pattern}\"\ndecision = \"allow\"\npriority = {PRIO_RESTRICTED_ALLOW}\n")
 
+            # Physical deny for all path-sensitive and un-sandboxable tools (unless whitelisted above or below)
             for tool in restricted_tools:
                 policy_lines.append(f"[[rule]]\ntoolName = \"{tool}\"\ndecision = \"deny\"\npriority = {PRIO_GENERAL_DENY}\ndenyMessage = \"SECURITY CONTRACT VIOLATION: Access restricted to whitelisted paths.\"\n")
+        else:
+            # No path restriction - allow restricted tools globally if they are in the whitelist
+            if tools_whitelist != ["*"]:
+                for tool in tools_whitelist:
+                    if tool in restricted_tools and tool != "run_shell_command":
+                        policy_lines.append(f"[[rule]]\ntoolName = \"{tool}\"\ndecision = \"allow\"\npriority = {PRIO_GENERAL_ALLOW}\n")
 
         # 2. SHELL COMMAND WHITELISTING (Native)
         if "run_shell_command" in tools_whitelist or tools_whitelist == ["*"]:
             if commands_whitelist:
+                # Surgical prefix allow
                 policy_lines.append(f"[[rule]]\ntoolName = \"run_shell_command\"\ncommandPrefix = {json.dumps(commands_whitelist)}\ndecision = \"allow\"\npriority = {PRIO_RESTRICTED_ALLOW}\n")
+                # Block all other shell commands if a whitelist exists
+                policy_lines.append(f"[[rule]]\ntoolName = \"run_shell_command\"\ndecision = \"deny\"\npriority = {PRIO_GENERAL_DENY}\ndenyMessage = \"SECURITY CONTRACT VIOLATION: Shell command not in whitelist.\"\n")
+            elif paths_whitelist == ["*"]:
+                # No command whitelist and no path restriction - allow globally if whitelisted
+                policy_lines.append(f"[[rule]]\ntoolName = \"run_shell_command\"\ndecision = \"allow\"\npriority = {PRIO_GENERAL_ALLOW}\n")
 
-        # 3. GENERAL TOOL ACCESS
+        # 3. GENERAL TOOL ACCESS (Non-Restricted)
         if tools_whitelist == ["*"]:
             policy_lines.append(f"[[rule]]\ntoolName = \"*\"\ndecision = \"allow\"\npriority = {PRIO_GENERAL_ALLOW}\n")
         else:
@@ -316,6 +319,7 @@ def _execute_single_run(
                 policy_content = "\n".join(policy_lines)
                 tf.write(policy_content)
                 policy_path = tf.name
+            logger.debug(f"Generated Admin Policy:\n{policy_content}")
             cmd.extend(["--admin-policy", policy_path])
 
         # --- DYNAMIC CONTEXT-AWARE PROMPT INJECTION (SIMULATION OVERRIDE) ---
