@@ -79,3 +79,14 @@ To ensure pristine testing conditions, `run_integration_tests.py` now generates 
 5.  After the test is evaluated, it obliterates the unique folder.
 
 This guarantees that every security test evaluates the engine in a perfect vacuum.
+
+## Automated Upstream Monitoring
+
+Because this library relies on undocumented internal mechanics of the Gemini CLI, it is vulnerable to "silent breaks" when the `@google/gemini-cli` package is updated.
+
+To mitigate this, we have implemented a **Nightly Upstream Monitor** via GitHub Actions:
+1.  Every night at 03:00 UTC, a workflow checks if a new version of the Gemini CLI has been published to npm.
+2.  If a new version is detected, the workflow automatically installs it and runs the full **Integration Test Battery**.
+3.  If any `[ENGINE FAIL]` occurs, the workflow fails and alerts the maintainers immediately.
+
+This "Canary" system ensures that we are the first to know if an upstream change has compromised the physical integrity of our sandbox.

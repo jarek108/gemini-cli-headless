@@ -94,7 +94,7 @@ When operating `gemini-cli-headless` in production, you must understand the foll
 
 ### 1. Version Lock & System Brittleness
 This orchestrator relies on deeply undocumented internal mechanics of the Gemini CLI's policy engine. It is strictly version-locked and certified **ONLY for Gemini CLI `v0.38.2`**. Using newer versions may cause the sandbox to silently fail. 
-*   **Action:** Never auto-update the underlying CLI in your production environments. See [Version Lock & Stability](docs/09_version_lock_and_stability.md) for details on breaking changes.
+*   **Action:** Never auto-update the underlying CLI in your production environments. We maintain an **Automated Nightly Monitor** via GitHub Actions to detect breaking upstream changes immediately. See [Version Lock & Stability](docs/09_version_lock_and_stability.md) for details.
 
 ### 2. Persona Leaking & Workspace Isolation
 If you are using `system_instruction_override` to create a pure data bot, the wrapper defaults to `isolate_from_hierarchical_pollution=True`. This prevents the CLI from walking up the directory tree and discovering `GEMINI.md` files from your parent projects. 
