@@ -2,7 +2,7 @@
 
 Verifying the integrity of an AI wrapper is fundamentally different from testing standard software. The model's non-deterministic nature requires a paradigm shift in how we assert "Success" and "Failure."
 
-## Quick Start: Running the Integrity Battery
+## Quick Start: Running the Integration Test Battery
 
 To verify the physical security and cognitive obedience of the wrapper, we use a custom 29-point test battery.
 
@@ -10,7 +10,7 @@ To verify the physical security and cognitive obedience of the wrapper, we use a
 Ensure your `GEMINI_API_KEY` is exported in your environment, then run:
 ```bash
 # We recommend using gemini-3.1-flash-lite-preview for testing due to speed and cost
-python tests/run_integrity.py gemini-3.1-flash-lite-preview
+python tests/run_integration_tests.py gemini-3.1-flash-lite-preview
 ```
 
 **To run the battery automatically before pushing:**
@@ -51,7 +51,7 @@ Because `ls` succeeded, `totalSuccess` was greater than 0, causing the test scri
 
 ### The Solution: Surgical Trace Auditing
 
-To accurately verify the physical engine, `run_integrity.py` employs **Surgical Trace Auditing**. 
+To accurately verify the physical engine, `run_integration_tests.py` employs **Surgical Trace Auditing**. 
 
 Instead of looking at the model's text or the high-level stats, the script dives into the `raw_data.trace.calls` array—the immutable engine log of every tool execution attempt.
 
@@ -68,13 +68,14 @@ This guarantees that our security assertions are tied to the physical reality of
 
 The Gemini CLI is designed to be helpful; it aggressively loads context from `.gemini/` history folders and the current working directory to maintain conversational state.
 
-During the integrity battery, running 20+ security tests sequentially in the same directory caused massive "Context Drift." The model would hallucinate errors from Test #3 while running Test #18, causing token consumption to skyrocket (resulting in expensive runs and API 429 Quota Exhaustion).
+During the integration test battery, running 20+ security tests sequentially in the same directory caused massive "Context Drift." The model would hallucinate errors from Test #3 while running Test #18, causing token consumption to skyrocket (resulting in expensive runs and API 429 Quota Exhaustion).
 
 ### The "Silo" Architecture
-To ensure pristine testing conditions, `run_integrity.py` now generates a completely isolated environment for every single test case:
-1.  It generates a unique UUID (e.g., `test_integrity_sandbox_a8f3b1...`).
-2.  It constructs a fresh filesystem inside that UUID folder.
-3.  It invokes the headless wrapper with a unique `project_name` (`integrity-a8f3b1...`), forcing the CLI to create a completely siloed internal chat history for that specific run.
-4.  After the test is evaluated, it obliterates the unique folder.
+To ensure pristine testing conditions, `run_integration_tests.py` now generates a completely isolated environment inside the system temporary directory (not the project root) for every single test case to keep the workspace clean:
+1.  Orphaned silos are automatically cleaned up at the start of every run to prevent temporary storage bloat.
+2.  It generates a unique UUID (e.g., `gemini_headless_silo_a8f3b1...`).
+3.  It constructs a fresh filesystem inside that UUID folder.
+4.  It invokes the headless wrapper with a unique `project_name` (`integrity-a8f3b1...`), forcing the CLI to create a completely siloed internal chat history for that specific run.
+5.  After the test is evaluated, it obliterates the unique folder.
 
 This guarantees that every security test evaluates the engine in a perfect vacuum.

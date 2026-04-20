@@ -100,12 +100,12 @@ This orchestrator relies on deeply undocumented internal mechanics of the Gemini
 If you are using `system_instruction_override` to create a pure data bot, the wrapper defaults to `isolate_from_hierarchical_pollution=True`. This prevents the CLI from walking up the directory tree and discovering `GEMINI.md` files from your parent projects. 
 *   **Action:** Do not disable this flag unless you explicitly want your headless agent to adopt the "Software Engineer" identity of the surrounding workspace.
 
-### 3. Testing the Sandbox (The Integrity Battery)
+### 3. Testing the Sandbox (The Integration Test Battery)
 Do not use `pytest` directly to verify the security of the engine. Standard tests only check the model's text output, which is unreliable.
-*   **Action:** To verify physical security and cognitive obedience, use our custom Integrity Battery. It executes 29 extreme edge cases and provides a crucial breakdown between **[MODEL FAIL]** (a cognitive refusal; does not block CI) and **[ENGINE FAIL]** (a physical sandbox leak; fatally blocks CI).
+*   **Action:** To verify physical security and cognitive obedience, use our custom Integration Test Battery. It executes 29 extreme edge cases and provides a crucial breakdown between **[MODEL FAIL]** (a cognitive refusal; does not block CI) and **[ENGINE FAIL]** (a physical sandbox leak; fatally blocks CI).
 
 To prevent leaking API keys to the cloud, testing is handled via a **Local Opt-Out Git Hook**. 
-The 3-minute Integrity Battery will automatically trigger *before* code is pushed to your remote repository if any core code files were modified. To bypass the tests (e.g., for simple updates or docs), use the standard Git bypass flag:
+The 3-minute Integration Test Battery will automatically trigger *before* code is pushed to your remote repository if any core code files were modified. To bypass the tests (e.g., for simple updates or docs), use the standard Git bypass flag:
 
 ```bash
 git push --no-verify

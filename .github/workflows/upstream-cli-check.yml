@@ -1,0 +1,59 @@
+name: Upstream CLI Monitor
+
+on:
+  schedule:
+    - cron: '0 3 * * *' # Run at 03:00 UTC every night
+  workflow_dispatch: # Allow manual triggering
+
+jobs:
+  check-version:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Get current certified version
+        id: certified
+        run: |
+          VERSION=$(grep -oP 'ONLY for Gemini CLI `v\K[0-9.]+(?=` )' README.md)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Get latest published version
+        id: upstream
+        run: |
+          VERSION=$(npm show @google/gemini-cli version)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Compare Versions
+        id: compare
+        run: |
+          if [ "${{ steps.certified.outputs.version }}" != "${{ steps.upstream.outputs.version }}" ]; then
+            echo "new_version_found=true" >> $GITHUB_OUTPUT
+          else
+            echo "new_version_found=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Run Integration Tests on New Version
+        if: steps.compare.outputs.new_version_found == 'true'
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          echo "New version detected: ${{ steps.upstream.outputs.version }}"
+          npm install -g @google/gemini-cli@${{ steps.upstream.outputs.version }}
+          pip install .
+          python tests/run_integration_tests.py
+          
+      - name: Notify on Failure
+        if: failure() && steps.compare.outputs.new_version_found == 'true'
+        run: |
+          echo "::error::Upstream Gemini CLI v${{ steps.upstream.outputs.version }} BROKE the sandbox!"
+          # You could add Slack/Email notification here

@@ -30,13 +30,13 @@ During cross-platform validation, a severe architectural difference surfaced in 
 ### The Solution: Surgical Tool Fallbacks
 We refactored the policy generation to protect against this proto crash without compromising the default-deny paradigm. If the user does *not* specify a path restriction (`paths_whitelist=["*"]`), the orchestrator now globally injects `allow` rules for all explicitly requested tools (like `read_file`), ensuring the CLI engine always receives a valid, non-empty tool schema.
 
-## 3. The Unified Integrity Battery
+## 3. The Unified Integration Test Battery
 
 ### The Difference
-Our 29-point Integrity Battery (`tests/run_integrity.py`) is designed to physically assault the sandbox. A hardcoded test targeting `C:/Windows/win.ini` or executing `powershell Start-Sleep` guarantees immediate failure on Linux, rendering the security assertions useless.
+Our 29-point Integration Test Battery (`tests/run_integration_tests.py`) is designed to physically assault the sandbox. A hardcoded test targeting `C:/Windows/win.ini` or executing `powershell Start-Sleep` guarantees immediate failure on Linux, rendering the security assertions useless.
 
 ### The Solution: Parameter Swapping
-We maintained a **single source of truth** for testing. The logic, assertions, and flow of the integrity battery are identical across platforms. However, the targets of the physical assaults are dynamically mapped at runtime:
+We maintained a **single source of truth** for testing. The logic, assertions, and flow of the integration test battery are identical across platforms. However, the targets of the physical assaults are dynamically mapped at runtime:
 
 ```python
     if os.name == "nt":
@@ -57,7 +57,7 @@ This guarantees that a `[PASSED]` status on Linux proves the sandbox is just as 
 
 To ensure these cross-platform architectures never regress without deploying sensitive API keys to cloud CI/CD providers (like GitHub Actions), the repository relies on a **Local Opt-Out Pre-Push Git Hook**.
 
-Instead of testing *after* the code is pushed to the cloud, the Integrity Battery is executed locally *before* the push is allowed to proceed:
+Instead of testing *after* the code is pushed to the cloud, the Integration Test Battery is executed locally *before* the push is allowed to proceed:
 *   **Zero-Trust Setup:** The API key remains strictly on the developer's local machine.
 *   **Opt-Out Trigger:** By default, any `git push` that includes core code changes will trigger the 3-minute test battery. You can bypass this using standard Git mechanisms (e.g., `git push --no-verify`).
 *   **Smart Bypass:** The hook automatically runs a diff check. If only documentation files (like `README.md` or `docs/`) were modified, it silently skips the battery entirely and pushes instantly.

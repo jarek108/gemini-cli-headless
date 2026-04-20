@@ -27,4 +27,4 @@ Our rules are mounted as `--policy` (Tier 4) with internal priorities specifical
 ## Mitigation Strategy
 
 1.  **Strict Version Pinning:** Systems relying on this orchestrator (like Cortex OS) **must** pin their Gemini CLI installation to exactly `v0.38.2`. Do not use `npm install -g @google/gemini-cli@latest`.
-2.  **The Canary in the Coal Mine:** The 29-point integrity battery (`tests/run_integrity.py`) is your primary defense. Before upgrading the underlying Gemini CLI binary, you must run the full battery. Because it uses Surgical Trace Auditing, it will instantly detect if any of the internal engine mechanics mentioned above have shifted, catching physical leaks before they reach production.
+2.  **The Canary in the Coal Mine:** The 29-point Integration Test Battery (`tests/run_integration_tests.py`) is your primary defense. Before upgrading the underlying Gemini CLI binary, you must run the full battery. Because it uses Surgical Trace Auditing, it will instantly detect if any of the internal engine mechanics mentioned above have shifted, catching physical leaks before they reach production.
