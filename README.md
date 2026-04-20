@@ -81,9 +81,13 @@ For the best balance of speed, cost, and obedience to the strict sandboxing rule
 
 ## ⚠️ Critical Warnings & Best Practices
 
-When operating `gemini-cli-headless` in production, you must understand three critical constraints:
+When operating `gemini-cli-headless` in production, you must understand the following critical constraints:
 
-### 1. Version Lock & System Brittleness
+### 1. Operating System Support (Windows Only, Linux WIP)
+Currently, this wrapper is fully tested and supported **only on Windows**. Linux support is actively being developed. If you run this on Linux, path sandboxing may fail or produce unexpected behavior.
+*   **Action:** If you are deploying to Linux, review our roadmap and testing strategy in **[Adding Linux Support (WIP)](docs/08_adding_linux_support.md)**.
+
+### 2. Version Lock & System Brittleness
 This orchestrator relies on deeply undocumented internal mechanics of the Gemini CLI's policy engine. It is strictly version-locked and certified **ONLY for Gemini CLI `v0.38.2`**. Using newer versions may cause the sandbox to silently fail. 
 *   **Action:** Never auto-update the underlying CLI in your production environments. See [Version Lock & Stability](docs/07_version_lock_and_stability.md) for details on breaking changes.
 
