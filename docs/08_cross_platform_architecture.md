@@ -53,5 +53,12 @@ We maintained a **single source of truth** for testing. The logic, assertions, a
 
 This guarantees that a `[PASSED]` status on Linux proves the sandbox is just as physically secure against `cat /etc/passwd` as the Windows sandbox is against `type C:/Windows/win.ini`.
 
-## Continuous Verification
-To ensure these cross-platform architectures never regress, the repository is guarded by a GitHub Actions CI pipeline that executes the entire Integrity Battery on both `ubuntu-latest` and `windows-latest` across multiple Python versions on every commit.
+## 4. Continuous Verification (The Pre-Push Hook)
+
+To ensure these cross-platform architectures never regress without deploying sensitive API keys to cloud CI/CD providers (like GitHub Actions), the repository relies on a **Local Opt-In Pre-Push Git Hook**.
+
+Instead of testing *after* the code is pushed to the cloud, the Integrity Battery is executed locally *before* the push is allowed to proceed:
+*   **Zero-Trust Setup:** The API key remains strictly on the developer's local machine.
+*   **Opt-In Trigger:** To prevent slowing down minor documentation updates, the hook defaults to instantly passing. It only executes the battery if the user explicitly requests it (e.g., `VERIFY=1 git push`).
+*   **Smart Bypass:** Even when verification is requested, the hook runs a diff check. If only documentation files (like `README.md` or `docs/`) were modified, it skips the 3-minute test battery entirely. 
+*   **Fatal Block:** If the battery detects an `[ENGINE FAIL]`, the script returns a fatal exit code `1`, physically blocking Git from pushing the compromised sandbox logic to the remote repository.

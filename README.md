@@ -93,12 +93,19 @@ If you are using `system_instruction_override` to create a pure data bot, the wr
 
 ### 3. Testing the Sandbox (The Integrity Battery)
 Do not use `pytest` directly to verify the security of the engine. Standard tests only check the model's text output, which is unreliable.
-*   **Action:** To verify physical security and cognitive obedience, use our custom Integrity Battery. It executes 29 extreme edge cases and provides a crucial breakdown between **[MODEL FAIL]** (the AI was stubborn) and **[ENGINE FAIL]** (the Python sandbox leaked).
+*   **Action:** To verify physical security and cognitive obedience, use our custom Integrity Battery. It executes 29 extreme edge cases and provides a crucial breakdown between **[MODEL FAIL]** (a cognitive refusal; does not block CI) and **[ENGINE FAIL]** (a physical sandbox leak; fatally blocks CI).
+
+To prevent leaking API keys to the cloud, testing is handled via a **Local Opt-In Git Hook**. 
+You can trigger the 3-minute Integrity Battery *before* pushing to remote by setting the verification flag:
 
 ```bash
-# Run all tests with the recommended fast model
-python tests/run_integrity.py gemini-3.1-flash-lite-preview
+# Windows (PowerShell)
+$env:VERIFY=1; git push
+
+# Linux / WSL (Bash)
+VERIFY=1 git push
 ```
+If you do not pass `VERIFY=1`, the hook defaults to an instant, unverified push. For more details, see **[Trace Auditing & Testing](docs/05_trace_auditing_and_testing.md)**.
 
 ---
 
