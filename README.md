@@ -67,7 +67,7 @@ When building workflows, developers face enormous pain points that `gemini-cli-h
 
 **1. The Persona Problem & Model Identity**
 The CLI has a hardcoded "Software Engineer" identity. Try asking it to simply extract JSON from a document, and it will often refuse or start explaining its engineering credentials. 
-*   *Our Solution:* We implemented the `system_instruction_override` parameter to completely wipe the agent's mind and replace it with your instructions. Read about how we handle model paranoia in **[Controlling the Agent's Mind](docs/04_soft_interception_model_psychology.md)**.
+*   *Our Solution:* We implemented the `system_instruction_override` parameter to completely wipe the agent's mind and replace it with your instructions. Read about how we handle model paranoia and identity in **[Controlling the Agent's Mind](docs/09_persona_overriding_and_system_md.md)**.
 
 **2. Inconsistent Sandboxing & Dangerous Defaults**
 Headless mode requires using `--raw-output` and the `--yolo` flag. By default, the agent has free rein over your filesystem and shell. Trying to restrict the agent to a specific folder or a specific set of tools via CLI flags is extremely difficult and non-transparent.
@@ -77,7 +77,7 @@ Headless mode requires using `--raw-output` and the `--yolo` flag. By default, t
 If you run the raw CLI inside your project, it stealthily searches parent directories for `GEMINI.md` files. Your headless bot's behavior will mysteriously change depending on which folder it runs in because it's secretly inheriting external project rules.
 *   *Our Solution:* We built a surgical environment trick (`isolate_from_hierarchical_pollution=True`) that forces the CLI into a clean room using `GEMINI_CLI_HOME` and `GEMINI_SYSTEM_MD`. This guarantees your persona remains pure and prevents parent folder pollution, while our custom **Workspace Root Resolution** and **Robust Session Discovery** ensure that chat histories are still reliably found and saved in the correct project directory. Understand our overarching philosophy in **[How We Tamed the Engine (Architecture Overview)](docs/03_architecture_overview.md)**.
 
-We have done our best not only to provide clear controls for these challenges, but also to create a suite of smart edge-case tests to verify this safety. You can learn about our trace auditing in **[How We Test](docs/05_trace_auditing_and_testing.md)**. For detailed API references and advanced configuration options, also take a look at the **[Usage & Examples page](docs/06_examples_and_usage.md)**.
+We have done our best not only to provide clear controls for these challenges, but also to create a suite of smart edge-case tests to verify this safety. You can learn about our trace auditing in **[How We Test](docs/05_trace_auditing_and_testing.md)**. For detailed API references and advanced configuration options, also take a look at the **[Usage & Examples page](docs/01_examples_and_usage.md)**.
 
 ## Recommended Models
 
