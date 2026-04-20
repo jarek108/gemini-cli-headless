@@ -82,15 +82,16 @@ This guarantees that every security test evaluates the engine in a perfect vacuu
 
 ## Local WSL Integration Testing
 
-For developers on Windows, we provide a specialized script to verify cross-platform parity using the Windows Subsystem for Linux (WSL). This ensures that path resolution and shell sandboxing are robust in both environments.
+For developers on Windows, you can verify cross-platform parity using the Windows Subsystem for Linux (WSL). This ensures that path resolution and shell sandboxing are robust in both environments.
 
-**To run WSL tests locally:**
-1.  Ensure WSL is installed and your default distribution has **Node.js v20+** installed.
-2.  Run the helper script from your Windows terminal:
+**To run tests inside WSL:**
+1.  Open your WSL terminal.
+2.  Ensure you have **Node.js v20+** and the Gemini CLI installed.
+3.  Navigate to the project root and run the standard integration script:
     ```bash
-    python tests/run_wsl_tests.py
+    python3 tests/run_integration_tests.py gemini-3.1-flash-lite-preview
     ```
-This script will automatically detect your WSL environment, ensure the Gemini CLI is installed, and execute the full Integration Test Battery within the Linux kernel while reporting results back to your Windows console.
+The script will automatically detect the Linux environment and adjust its security targets (e.g., checking `/etc/passwd` instead of `win.ini`) accordingly.
 
 ## Automated Upstream Monitoring
 
