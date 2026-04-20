@@ -4,6 +4,16 @@
 
 ## Quick Start
 
+**Prerequisite:** Both usage and testing of this library require a valid Google Gemini API key. Ensure it is available in your environment before running any code:
+```bash
+# Windows
+$env:GEMINI_API_KEY="your-api-key"
+
+# Linux / macOS
+export GEMINI_API_KEY="your-api-key"
+```
+Alternatively, you can pass it directly to the function using the `api_key` argument. The wrapper will fail with a clear `ValueError` if the key is completely missing.
+
 **Example 1: The Secure Coding Agent**
 Allow the agent to edit files, but strictly confine it to a specific directory and whitelist exactly which shell commands it can run.
 

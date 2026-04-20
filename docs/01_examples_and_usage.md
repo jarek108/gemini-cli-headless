@@ -4,6 +4,16 @@
 
 ## Basic Usage
 
+**Prerequisite:** Both usage and testing of this library require a valid Google Gemini API key. Ensure it is available in your environment before running any code:
+```bash
+# Windows
+$env:GEMINI_API_KEY="your-api-key"
+
+# Linux / macOS
+export GEMINI_API_KEY="your-api-key"
+```
+Alternatively, you can pass it directly to the function using the `api_key` argument. The wrapper will fail with a clear `ValueError` if the key is completely missing.
+
 To run a simple, unrestricted prompt (Not recommended for autonomous execution):
 
 ```python

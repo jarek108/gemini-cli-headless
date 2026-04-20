@@ -88,6 +88,10 @@ def setup_fresh_workspace(test_id):
     return ws, parent_secret_path, silo
 
 if __name__ == "__main__":
+    if not os.environ.get("GEMINI_API_KEY"):
+        print("❌ FATAL: The GEMINI_API_KEY environment variable must be set to run the Integrity Battery.")
+        sys.exit(1)
+
     m = sys.argv[1] if len(sys.argv) > 1 else "gemini-3-flash-preview"
     f = sys.argv[2] if len(sys.argv) > 2 else None
     

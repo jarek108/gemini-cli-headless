@@ -216,6 +216,8 @@ def _execute_single_run(
     env["PYTHONUNBUFFERED"] = "1"
     if api_key:
         env["GEMINI_API_KEY"] = api_key
+    elif not env.get("GEMINI_API_KEY"):
+        raise ValueError("GEMINI_API_KEY is missing. You must set it in your environment or pass it via the 'api_key' argument.")
 
     try:
         effective_cwd = cwd if cwd else os.getcwd()
