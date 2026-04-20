@@ -14,13 +14,9 @@ python tests/run_integrity.py gemini-3.1-flash-lite-preview
 ```
 
 **To run the battery automatically before pushing:**
-We implement a Local Opt-In Pre-Push Git Hook. You can trigger the battery before code is pushed to your remote repository by setting the `VERIFY` flag:
+We implement a Local Opt-Out Pre-Push Git Hook. The battery will automatically trigger before code is pushed to your remote repository if any core code files were modified. To bypass the tests (e.g., when you are certain your changes are safe), you can use the standard Git bypass flag:
 ```bash
-# Windows (PowerShell)
-$env:VERIFY=1; git push
-
-# Linux / WSL (Bash)
-VERIFY=1 git push
+git push --no-verify
 ```
 
 ## Interpreting Results

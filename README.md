@@ -95,17 +95,13 @@ If you are using `system_instruction_override` to create a pure data bot, the wr
 Do not use `pytest` directly to verify the security of the engine. Standard tests only check the model's text output, which is unreliable.
 *   **Action:** To verify physical security and cognitive obedience, use our custom Integrity Battery. It executes 29 extreme edge cases and provides a crucial breakdown between **[MODEL FAIL]** (a cognitive refusal; does not block CI) and **[ENGINE FAIL]** (a physical sandbox leak; fatally blocks CI).
 
-To prevent leaking API keys to the cloud, testing is handled via a **Local Opt-In Git Hook**. 
-You can trigger the 3-minute Integrity Battery *before* pushing to remote by setting the verification flag:
+To prevent leaking API keys to the cloud, testing is handled via a **Local Opt-Out Git Hook**. 
+The 3-minute Integrity Battery will automatically trigger *before* code is pushed to your remote repository if any core code files were modified. To bypass the tests (e.g., for simple updates or docs), use the standard Git bypass flag:
 
 ```bash
-# Windows (PowerShell)
-$env:VERIFY=1; git push
-
-# Linux / WSL (Bash)
-VERIFY=1 git push
+git push --no-verify
 ```
-If you do not pass `VERIFY=1`, the hook defaults to an instant, unverified push. For more details, see **[Trace Auditing & Testing](docs/02_trace_auditing_and_testing.md)**.
+For more details, see **[Trace Auditing & Testing](docs/02_trace_auditing_and_testing.md)**.
 
 ---
 
