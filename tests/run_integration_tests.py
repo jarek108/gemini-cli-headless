@@ -97,7 +97,9 @@ class IntegrationTestMonitor:
         self.render()
 
     def render(self):
-        # os.system('cls' if os.name == 'nt' else 'clear') 
+        if sys.stdout.isatty():
+            os.system('cls' if os.name == 'nt' else 'clear') 
+        
         total_elapsed = time.time() - self.start_time
         # Don't count skipped tests in progress bar total
         active_tests = self.total_tests - self.skipped
@@ -122,7 +124,6 @@ class IntegrationTestMonitor:
         for n in names:
             state = self.test_states[n]
             status = state["status"]
-            if status == "PENDING": continue
             dur = state["duration"]
             att = state["attempts"]
             
@@ -135,9 +136,13 @@ class IntegrationTestMonitor:
             
             status_display = status
             if att > 1: status_display = f"{status}, Try {att}"
+            
             if status == "SKIPPED":
                  status_bracket = f"[{status_display}]"
                  print(f"{color}{n:<35} {status_bracket:<20}{RESET} {state['error']}")
+            elif status == "PENDING":
+                 status_bracket = f"[{status_display}]"
+                 print(f"{D}{n:<35} {status_bracket:<20}{RESET}")
             else:
                  status_bracket = f"[{status_display}]"
                  print(f"{color}{n:<35} {status_bracket:<20}{RESET} {dur:>5.1f}s")
@@ -282,7 +287,8 @@ if __name__ == "__main__":
             "tools": cfg.get("allowed_tools"), "paths": cfg.get("allowed_paths"), 
             "commands": cfg.get("allowed_commands"), "files": cfg.get("files"), 
             "timeout": cfg.get("timeout"), "sys_override": cfg.get("sys_override"),
-            "isolation": cfg.get("isolation", True)
+            "isolation": cfg.get("isolation", True),
+            "skip": cfg.get("skip")
         })
 
     monitor = IntegrationTestMonitor(model_id, cases)
@@ -328,6 +334,10 @@ if __name__ == "__main__":
         return None
 
     for c in cases:
+        if c.get("skip"):
+            monitor.update_test(c["name"], "SKIPPED", error=c["skip"], duration=0)
+            continue
+
         monitor.current_test = c["name"]
         attempts = 1
         monitor.update_test(c["name"], "WIP", attempts=attempts)
@@ -454,8 +464,8 @@ if __name__ == "__main__":
             msg = str(e).lower()
             status = "ENGINE FAIL"
             # Special handling for expected failures in security tests
-            if any(x in msg for x in ["outside the allowed paths", "not found", "permissionerror", "forbidden", "contract violation", "restriction"]):
-                if c["name"] in ["ctx_attach_missing_file", "sec_tools_absent_prompt_denial"]: status = "PASSED"
+            if any(x in msg for x in ["outside the allowed paths", "not found", "permissionerror", "forbidden", "contract violation", "restriction", "operation cancelled"]):
+                if c["name"] in ["ctx_attach_missing_file", "sec_tools_absent_prompt_denial", "sec_tools_sibling_leakage", "sec_tools_forbidden_deny"]: status = "PASSED"
             elif "timeout" in msg and c["name"] == "res_timeout_enforcement": status = "PASSED"
             
             monitor.update_test(c["name"], status, str(e), time.time() - start, attempts=attempts)

@@ -19,6 +19,8 @@ Allow the agent to edit files and whitelist exactly which shell commands it can 
 
 > **🚨 CRITICAL WARNING: PATH SECURITY IS CURRENTLY BROKEN 🚨**
 > Do NOT use the `allowed_paths` parameter in the current version. Due to a static compiler bug in the upstream Gemini CLI policy engine, attempting to restrict paths will permanently delete all tools from the agent's schema, causing severe hallucinations. Rely on `allowed_tools` and `allowed_commands` for security instead. *(See the `canary_tool_presence_baseline` vs `canary_upstream_compiler_bug` tests in our integration suite for reproducible proof of this defect).*
+> 
+> *Note: The library will actively emit a `logger.warning()` to your console at runtime if it detects you attempting to use `allowed_paths` to prevent accidental deployments of broken agents.*
 
 ```python
 import os
