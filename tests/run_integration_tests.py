@@ -296,7 +296,6 @@ if __name__ == "__main__":
     def path_leak_logic(s, forbidden_path_norm):
         if not s or not s.session_path or not os.path.exists(s.session_path): return None
         
-        # Read the full session file to get the tool calls
         try:
             with open(s.session_path, 'r', encoding='utf-8') as f:
                 session_data = json.load(f)
@@ -325,7 +324,6 @@ if __name__ == "__main__":
                     if call.get("status") == "success" or call.get("result"):
                         return f"Physical leak: Tool '{tool_name}' reached forbidden path!"
             else:
-                 # Fallback for complex args
                  args_str = str(args_dict).lower()
                  if forbidden_real in args_str or forbidden_path_norm.lower() in args_str:
                      if call.get("status") == "success" or call.get("result"):
@@ -339,8 +337,6 @@ if __name__ == "__main__":
             continue
 
         monitor.current_test = c["name"]
-        attempts = 1
-        monitor.update_test(c["name"], "WIP", attempts=attempts)
         
         test_id = str(uuid.uuid4())[:8]
         workspace, parent_secret_path, silo = setup_fresh_workspace(test_id)
@@ -350,141 +346,103 @@ if __name__ == "__main__":
         formatted_paths = [p.format(ws_norm=ws_norm, ok_norm=ok_norm, read_only_norm=read_only_norm) for p in c["paths"]] if c["paths"] else None
         formatted_files = [f.format(ws_norm=ws_norm) for f in c["files"]] if c["files"] else None
         
-        start = time.time(); session = None; err = None
-        try:
-            if c["name"] == "state_session_persistence":
-                s1 = run_gemini_cli_headless(prompt="My name is Jarek.", model_id=model_id, cwd=workspace, project_name=f"state-{test_id}", isolate_from_hierarchical_pollution=False)
-                s2 = run_gemini_cli_headless(prompt="What is my name?", model_id=model_id, cwd=workspace, session_to_resume=s1.session_path, project_name=f"state-{test_id}", isolate_from_hierarchical_pollution=False)
-                if "jarek" not in s2.text.lower(): err = f"Session state lost. Model said: {s2.text}"
-                monitor.update_stats(s1); monitor.update_stats(s2)
-                session = s2 
-            elif c["name"] == "state_file_flush_verification":
-                s1 = run_gemini_cli_headless(prompt="My name is Jarek.", model_id=model_id, cwd=workspace, project_name=f"state-{test_id}", isolate_from_hierarchical_pollution=False)
-                if not s1.session_path or not os.path.exists(s1.session_path):
-                    err = "Session file does not exist on disk."
+        start = time.time(); session = None; err = None; attempts = 1
+        
+        # Unified Retry Wrapper
+        max_rl = 5; rl_att = 0
+        while rl_att < max_rl:
+            attempts = rl_att + 1
+            monitor.update_test(c["name"], "WIP", attempts=attempts)
+            try:
+                if c["name"] == "state_session_persistence":
+                    s1 = run_gemini_cli_headless(prompt="My name is Jarek.", model_id=model_id, cwd=workspace, project_name=f"state-{test_id}", isolate_from_hierarchical_pollution=False)
+                    s2 = run_gemini_cli_headless(prompt="What is my name?", model_id=model_id, cwd=workspace, session_to_resume=s1.session_path, project_name=f"state-{test_id}", isolate_from_hierarchical_pollution=False)
+                    if "jarek" not in s2.text.lower(): err = f"Session state lost. Model said: {s2.text}"
+                    monitor.update_stats(s1); monitor.update_stats(s2)
+                    session = s2 
+                elif c["name"] == "state_file_flush_verification":
+                    s1 = run_gemini_cli_headless(prompt="My name is Jarek.", model_id=model_id, cwd=workspace, project_name=f"state-{test_id}", isolate_from_hierarchical_pollution=False)
+                    if not s1.session_path or not os.path.exists(s1.session_path):
+                        err = "Session file does not exist on disk."
+                    else:
+                        with open(s1.session_path, 'r', encoding='utf-8') as f:
+                            data = json.load(f)
+                            messages = data.get("messages", [])
+                            if len(messages) == 0:
+                                err = "Race Condition Confirmed: Session file exists but is empty/stale."
+                    monitor.update_stats(s1)
+                    session = s1
+                elif c["name"] == "state_knowledge_invalidation":
+                    s1 = run_gemini_cli_headless(prompt="The secret code is 1234.", model_id=model_id, cwd=workspace, project_name=f"state-{test_id}", isolate_from_hierarchical_pollution=False)
+                    if s1.session_path and os.path.exists(s1.session_path): os.remove(s1.session_path)
+                    s2 = run_gemini_cli_headless(
+                        prompt="What is the secret code?", model_id=model_id, cwd=workspace, session_to_resume=s1.session_id, project_name=f"state-{test_id}", isolate_from_hierarchical_pollution=False,
+                        system_instruction_override="You are a new agent. You have NO KNOWLEDGE of any codes. If asked for a code, you MUST say you don't know it."
+                    )
+                    if "1234" in s2.text: err = "Zombie Knowledge Confirmed: Model remembered secret after file deletion (Server State Leak)."
+                    monitor.update_stats(s1); monitor.update_stats(s2)
+                    session = s2
+                elif c["name"] == "sys_zero_side_effect_check":
+                    pre_run_state = {os.path.join(r, f): os.path.getmtime(os.path.join(r, f)) for r, _, fs in os.walk(workspace) for f in fs}
+                    session = run_gemini_cli_headless(prompt="What is the project codename?", model_id=model_id, cwd=workspace, project_name=f"sys-{test_id}", isolate_from_hierarchical_pollution=True)
+                    post_run_state = {os.path.join(r, f): os.path.getmtime(os.path.join(r, f)) for r, _, fs in os.walk(workspace) for f in fs if ".gemini" not in r}
+                    if pre_run_state != post_run_state: err = "Side-effect detected: Workspace files were modified or created during execution."
+                    monitor.update_stats(session)
                 else:
-                    with open(s1.session_path, 'r', encoding='utf-8') as f:
-                        data = json.load(f)
-                        messages = data.get("messages", [])
-                        if len(messages) == 0:
-                            err = "Race Condition Confirmed: Session file exists but is empty/stale."
-                monitor.update_stats(s1)
-                session = s1
-            elif c["name"] == "state_knowledge_invalidation":
-                s1 = run_gemini_cli_headless(prompt="The secret code is 1234.", model_id=model_id, cwd=workspace, project_name=f"state-{test_id}", isolate_from_hierarchical_pollution=False)
+                    session = run_gemini_cli_headless(
+                        prompt=formatted_prompt, model_id=model_id, cwd=workspace,
+                        allowed_tools=c["tools"] if c["tools"] is not None else ["read_file"],
+                        allowed_paths=formatted_paths, allowed_commands=c["commands"], 
+                        files=formatted_files, timeout_seconds=c["timeout"], max_retries=1, 
+                        project_name=f"int-{test_id}", system_instruction_override=c["sys_override"],
+                        isolate_from_hierarchical_pollution=c["isolation"]
+                    )
+                    monitor.update_stats(session)
                 
-                # Physical Invalidation: Delete the session file from disk
-                if s1.session_path and os.path.exists(s1.session_path):
-                    os.remove(s1.session_path)
-                
-                # Resume with only the ID
-                s2 = run_gemini_cli_headless(
-                    prompt="What is the secret code?", 
-                    model_id=model_id, 
-                    cwd=workspace, 
-                    session_to_resume=s1.session_id, 
-                    project_name=f"state-{test_id}", 
-                    isolate_from_hierarchical_pollution=False,
-                    system_instruction_override="You are a new agent. You have NO KNOWLEDGE of any codes. If asked for a code, you MUST say you don't know it."
-                )
-                if "1234" in s2.text:
-                    err = "Zombie Knowledge Confirmed: Model remembered secret after file deletion (Server State Leak)."
-                monitor.update_stats(s1); monitor.update_stats(s2)
-                session = s2
-            elif c["name"] == "sys_zero_side_effect_check":
-                # Take snapshot before run
-                pre_run_state = {}
-                for root, _, files in os.walk(workspace):
-                    for file in files:
-                        p = os.path.join(root, file)
-                        pre_run_state[p] = os.path.getmtime(p)
-                
-                session = run_gemini_cli_headless(
-                    prompt="What is the project codename?", 
-                    model_id=model_id, 
-                    cwd=workspace, 
-                    project_name=f"sys-{test_id}",
-                    isolate_from_hierarchical_pollution=True
-                )
-                
-                # Compare snapshot after run
-                post_run_state = {}
-                for root, _, files in os.walk(workspace):
-                    # Exclude the temporary .gemini folder created during execution if it wasn't cleaned up properly
-                    if ".gemini" not in root:
-                        for file in files:
-                            p = os.path.join(root, file)
-                            post_run_state[p] = os.path.getmtime(p)
-                
-                if pre_run_state != post_run_state:
-                    err = "Side-effect detected: Workspace files were modified or created during execution."
-                    
-                monitor.update_stats(session)
-            else:
-                max_rl = 5; rl_att = 0
-                while rl_att < max_rl:
-                    monitor.update_test(c["name"], "WIP", attempts=rl_att + 1)
-                    try:
-                        session = run_gemini_cli_headless(
-                            prompt=formatted_prompt, model_id=model_id, cwd=workspace,
-                            allowed_tools=c["tools"] if c["tools"] is not None else ["read_file"],
-                            allowed_paths=formatted_paths, allowed_commands=c["commands"], 
-                            files=formatted_files, timeout_seconds=c["timeout"], max_retries=1, 
-                            project_name=f"int-{test_id}", system_instruction_override=c["sys_override"],
-                            isolate_from_hierarchical_pollution=c["isolation"]
-                        )
-                        break
-                    except RuntimeError as re_err:
-                        if "Rate Limit Exceeded" in str(re_err):
-                            rl_att += 1
-                            monitor.update_test(c["name"], "WAIT", attempts=rl_att + 1)
-                            wait_time = 65
-                            time.sleep(wait_time)
-                            monitor.add_wait_time(wait_time)
-                            continue
-                        raise
-                attempts = rl_att + 1
-                monitor.update_stats(session)
-                
-                # Validation Logic
-                if c["name"] == "iso_pollution_fix":
-                    if f"PARENT_CODE_{test_id}" in session.text: err = "Hierarchical pollution leaked!"
-                elif c["name"] in ["sec_paths_parent_traversal_denied", "sec_paths_absolute_path_block", "sec_paths_write_restriction", "complex_traversal_via_tool_param"]:
-                    target = parent_secret_norm if "parent" in c["name"] else (SYSTEM_SECRET_FILE if "absolute" in c["name"] else (f"{ok_norm}/new.txt" if "write" in c["name"] else f"{ws_norm}/.."))
-                    err = path_leak_logic(session, target)
-                elif "whitelisted" in c["name"] or "nested" in c["name"] or "attach_valid" in c["name"]:
-                    if session.stats.get("totalSuccess", 0) == 0 and "standard file" not in session.text.lower(): err = "[MODEL ERROR] Refused valid action."
+                status = "PASSED" if not err else "ENGINE FAIL"
+                monitor.update_test(c["name"], status, err, time.time() - start, attempts=attempts)
+                break
 
-            status = "PASSED"
-            if err:
-                status = "MODEL FAIL" if "[MODEL ERROR]" in err else "ENGINE FAIL"
-            monitor.update_test(c["name"], status, err, time.time() - start, attempts=attempts)
-            
-        except Exception as e:
-            msg = str(e).lower()
-            status = "ENGINE FAIL"
-            # Special handling for expected failures in security tests
-            if any(x in msg for x in ["outside the allowed paths", "not found", "permissionerror", "forbidden", "contract violation", "restriction", "operation cancelled"]):
-                if c["name"] in ["ctx_attach_missing_file", "sec_tools_absent_prompt_denial", "sec_tools_sibling_leakage", "sec_tools_forbidden_deny"]: status = "PASSED"
-            elif "timeout" in msg and c["name"] == "res_timeout_enforcement": status = "PASSED"
-            
-            monitor.update_test(c["name"], status, str(e), time.time() - start, attempts=attempts)
-            err = str(e)
-        finally:
-            s_paths = []
-            if c["name"] == "state_session_persistence":
-                if 's1' in locals(): s_paths.append(s1.session_path)
-                if 's2' in locals(): s_paths.append(s2.session_path)
-            elif session:
-                s_paths.append(session.session_path)
+            except Exception as e:
+                msg = str(e).lower()
+                if "daily_quota_exhausted" in msg:
+                     monitor.update_test(c["name"], "ENGINE FAIL", "DAILY QUOTA EXHAUSTED - ABORTING RUN", time.time() - start, attempts=attempts)
+                     print(f"\n{R}{B}FATAL: Daily Quota reached. Terminating integration suite.{RESET}")
+                     sys.exit(1)
+                
+                if "minute_quota_exhausted" in msg or "429" in msg or "quota" in msg:
+                    rl_att += 1
+                    if rl_att < max_rl:
+                        wait_time = 65
+                        monitor.update_test(c["name"], "WAIT", f"Minute Quota Exhausted. Waiting {wait_time}s...", time.time() - start, attempts=attempts)
+                        time.sleep(wait_time)
+                        monitor.add_wait_time(wait_time)
+                        continue
 
-            preserve_artifacts(monitor, c["name"], silo, session_paths=s_paths, extra_data={
-                "prompt": formatted_prompt, 
-                "error": err,
-                "status": status,
-                "response": session.text if session else None,
-                "stats": session.stats if session else None
-            })
+                status = "ENGINE FAIL"
+                if any(x in msg for x in ["outside the allowed paths", "not found", "permissionerror", "forbidden", "contract violation", "restriction", "operation cancelled"]):
+                    if c["name"] in ["ctx_attach_missing_file", "sec_tools_absent_prompt_denial", "sec_tools_sibling_leakage", "sec_tools_forbidden_deny"]: status = "PASSED"
+                elif "timeout" in msg and c["name"] == "res_timeout_enforcement": status = "PASSED"
+                
+                monitor.update_test(c["name"], status, str(e), time.time() - start, attempts=attempts)
+                err = str(e)
+                break
+        
+        # Artifact preservation logic after breaking or finishing the retry loop
+        s_paths = []
+        if c["name"] == "state_session_persistence":
+            if 's1' in locals(): s_paths.append(s1.session_path)
+            if 's2' in locals(): s_paths.append(s2.session_path)
+        elif session:
+            s_paths.append(session.session_path)
+
+        preserve_artifacts(monitor, c["name"], silo, session_paths=s_paths, extra_data={
+            "prompt": formatted_prompt, 
+            "error": err,
+            "status": monitor.test_states[c["name"]]["status"],
+            "response": session.text if session else None,
+            "stats": session.stats if session else None
+        })
 
     monitor.current_test = None
     monitor.render()

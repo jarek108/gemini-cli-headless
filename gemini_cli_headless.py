@@ -445,7 +445,10 @@ def _execute_single_run(
         combined_output = "".join(combined_output_list)
         lowered_output = combined_output.lower()
         if "exhausted" in lowered_output or "quota" in lowered_output or "429" in lowered_output:
-             raise RuntimeError(f"Gemini API Quota Exhausted. Output: {combined_output[:500]}")
+             if "daily" in lowered_output:
+                 raise RuntimeError(f"DAILY_QUOTA_EXHAUSTED: Your daily limit has been reached. Output: {combined_output[:500]}")
+             else:
+                 raise RuntimeError(f"MINUTE_QUOTA_EXHAUSTED: Rate limit reached. Wait required. Output: {combined_output[:500]}")
         
         if ("modelnotfounderror" in lowered_output or "model not found" in lowered_output) and "error executing tool" not in lowered_output:
              raise RuntimeError(f"Gemini Model Not Found.")
