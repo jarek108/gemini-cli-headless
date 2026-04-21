@@ -34,7 +34,10 @@ When orchestrating autonomous agents, you must enforce boundaries.
 
 ### 1. File Sandbox (Whitelisted Path + Specific Tools)
 
-This limits the agent to only reading and replacing text within a specific `/src` folder. It cannot list directories, run shell commands, or touch files outside `/src`.
+> **🚨 CRITICAL WARNING: PATH SECURITY IS CURRENTLY BROKEN 🚨**
+> Do NOT use the `allowed_paths` parameter in the current version. Due to a static compiler bug in the upstream Gemini CLI policy engine, attempting to restrict paths will permanently delete all tools from the agent's schema, causing severe hallucinations. Rely on `allowed_tools` and `allowed_commands` for security instead.
+
+This example shows how you *would* limit the agent (once the bug is fixed). Currently, it cannot be used safely.
 
 ```python
 import os
@@ -46,7 +49,7 @@ session = run_gemini_cli_headless(
     prompt="Refactor the authentication logic in auth.ts.",
     cwd=project_root,
     allowed_tools=["read_file", "replace", "grep_search"],
-    allowed_paths=[project_root] # The strict boundary
+    # ~~allowed_paths=[project_root]~~ # The strict boundary (Currently broken upstream)
 )
 ```
 
@@ -94,7 +97,7 @@ session_1 = run_gemini_cli_headless(
 session_2 = run_gemini_cli_headless(
     prompt="Execute step 1 of your plan.",
     allowed_tools=["write_file"],
-    allowed_paths=["./calculator_project"],
+    # ~~allowed_paths=["./calculator_project"],~~
     session_to_resume=session_1.session_id # Picks up exactly where it left off
 )
 ```
@@ -129,7 +132,7 @@ print(session.text)
 
 ## Advanced: Prompt Control (`inject_enforcement_contract`)
 
-By default, the library prepends an `[ENVIRONMENT CONTEXT]` block to your prompt to inform the model about its whitelisted tools and mandate the use of absolute paths. This prevents the model from paralyzing itself in a restricted sandbox.
+By default, the library enforces an **Additive System Instruction Strategy**. It merges professional "Workspace Profiles" directly into the `GEMINI_SYSTEM_MD` (the model's core identity) to inform the model about its whitelisted tools. This prevents the model from paralyzing itself ("Tool Shyness") without replacing its default Software Engineer identity. If isolation is disabled, it safely falls back to a minimalist `System Note:` at the top of the user prompt to avoid mutating your local workspace files.
 
 Power users who want 100% control over the exact text sent to the model can disable this auto-injection.
 

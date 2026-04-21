@@ -1,53 +1,50 @@
-# 03. Path Security & Structural Anchoring
+# 03. Path Security & The Static Compiler Bug
 
-Path-based security is notoriously difficult in LLM tool calling. If an AI agent has the ability to read or write files, preventing it from escaping its designated sandbox is critical.
+Path-based security is notoriously difficult in LLM tool calling. If an AI agent has the ability to read or write files, preventing it from escaping its designated sandbox is critical. 
 
-## The Problems with Vanilla Path Security
+> **🚨 CRITICAL WARNING: PATH SECURITY IS CURRENTLY BROKEN 🚨**
+> Do NOT use the `allowed_paths` parameter in the current version of this library. Due to a static compiler bug in the upstream `gemini-cli` policy engine, attempting to apply path restrictions will permanently delete all tools from the agent's schema, rendering the agent incapable of using tools and causing severe hallucinations. *(See the `canary_tool_presence_baseline` vs `canary_upstream_compiler_bug` tests in our integration suite for reproducible proof of this defect).* 
 
-If you try to run the raw Gemini CLI headlessly and restrict its file access, you face two massive security vulnerabilities:
+## The Core Concept
 
-1.  **Parameter Injection (The Sibling Trap):** An LLM outputs raw JSON for tool calls. A malicious or hallucinating model might try to bypass a naive path filter (e.g., `path: "/safe/.*"`) by hiding a forbidden path inside a different parameter that isn't being checked. For example, it might emit `{"content": "{\"path\":\"/secret/passwd\"}"}` for a `write_file` call, tricking the parser.
-2.  **Relative Path Traversal:** If you simply whitelist a directory like `/project/src`, the model can easily escape by requesting `../../secret_keys.env`. If the engine resolves this path *after* checking the policy (or vice versa), the sandbox is physically breached.
+The Gemini CLI uses a TOML-based policy engine to define what actions the model is permitted to take. `gemini-cli-headless` wraps this engine, allowing users to pass `allowed_tools` and `allowed_paths` which it translates into TOML rules.
 
-To counter these vulnerabilities without relying on fragile string parsing, `gemini-cli-headless` utilizes an undocumented feature of the Gemini CLI engine: **Null-Byte Structural Anchoring**.
+A standard path restriction requires two conceptual rules:
+1. **ALLOW** `read_file` on `/sandbox`.
+2. **DENY** `read_file` everywhere else (a Catch-All Deny).
 
-## The Internal Physics: `stableStringify`
+## The Static Compiler Bug (The Catch-22)
 
-When the Gemini model requests a tool call, it emits a raw JSON string. The CLI engine must match this string against the `argsPattern` regex defined in the TOML policy.
+The upstream `gemini-cli` contains a bug in how it translates the TOML policy into the JSON "Tool Schema" that is sent to the Gemini API. The schema is what tells the AI what functions it is physically capable of calling.
 
-However, the engine does not just run the regex against the raw JSON. First, it passes the JSON through an internal `stableStringify` function. This function sorts the keys and, crucially, **wraps every top-level key-value pair in Null Bytes (`\0`)**.
+The CLI's schema generator evaluates rules *statically*, before the model even boots. 
 
-A raw LLM output like this:
-`{"path": "C:/safe/file.txt", "content": "hello"}`
+When `gemini-cli-headless` generates the necessary Catch-All DENY rule to protect the rest of your hard drive, the upstream static schema compiler sees "DENY `read_file`" and misinterprets it. It doesn't understand that this is a fallback rule for paths outside the whitelist. It simply concludes: *"This tool is denied,"* and **completely erases it from the API request schema**.
 
-Is stringified internally as:
-`{"\0"path":"C:/safe/file.txt"\0","\0"content":"hello"\0"}`
+### The Consequence
 
-## The Problem: The "JSON Backslash Trap"
+1. You set `allowed_paths=["/sandbox/ok"]`.
+2. The wrapper generates the DENY rule to secure the boundary.
+3. The upstream CLI strips all file-system tools from the model's brain.
+4. The model attempts to fulfill your request (e.g., "Read the file"), realizes it has no native tools, and hallucinates XML tags to fake the action.
 
-If we write a naive TOML rule like:
-`argsPattern = "\"path\":\"C:/safe/.*\""`
+## Workarounds & Capabilities
 
-We risk two failures:
-1.  **Over-matching (Injection):** If the model writes `{"content": "{\"path\":\"C:/secret/\"}"}`, our regex might accidentally trigger on the nested, fake `path` key, granting access to a forbidden file.
-2.  **Under-matching:** We might fail to account for how the CLI engine escapes characters before the regex is applied.
+Until the upstream `gemini-cli` patches its schema generator to gracefully handle conditional `restrictedPaths` annotations without stripping the tool from the schema, true autonomous path security via the policy engine is compromised.
 
-## The Solution: `\\0` Anchoring
+**What you CAN do (The Safe Operating Mode):**
+You can perfectly mix, match, and restrict tools as long as you do not apply path limitations. 
+* Always leave `allowed_paths=["*"]` (or `None`).
+* Freely define `allowed_tools=["read_file", "run_shell_command"]` or specific `allowed_commands=["npm test"]`.
 
-By incorporating the structural Null Bytes into our regex, we force the engine to match *only* actual, top-level JSON keys, completely eliminating content injection attacks.
+If you specify `allowed_tools=["read_file", "list_directory"]` and leave `allowed_paths=["*"]`, the system works flawlessly. The CLI correctly strips unauthorized tools (like `write_file`) and the model accurately understands its capabilities.
 
-In our dynamically generated TOML, the path rule looks like this:
-`argsPattern = "\\\\0\"(?:file_path|dir_path|path|cwd)\":\"(?i)C:/safe_workspace/.*\"\\\\0"`
+**What you CANNOT do:**
+You cannot safely lock an active tool to a specific folder. 
 
-*   `\\\\0` (Escaped for TOML) anchors the match to the exact boundary of the JSON property.
-*   `(?:file_path|dir_path|path|cwd)` explicitly targets the keys used by file operations.
-*   `(?i)` ensures case-insensitive matching (vital for Windows paths).
+If you need strict path security right now, you must rely on OS-level isolation (e.g., running the Python script inside a Docker container or a severely restricted user account) where the operating system itself rejects unauthorized file access, rather than relying on the Gemini CLI's internal policy engine.
 
-## The "Absolute Path" Contract
+---
 
-The final hurdle is path normalization. The CLI engine matches the `argsPattern` against the *raw string provided by the model*, **before** resolving relative paths.
-
-If we whitelist `C:/project/`, the model could bypass our regex simply by requesting `"../other_project/"`—the regex wouldn't match `C:/project/`, so it would fall through to our Catch-All DENY. While secure, this causes the task to fail unnecessarily.
-
-**The Fix:**
-We enforce an **Absolute Path Contract** via the system prompt (see `02_prompt_composition_and_soft_interception.md`). The model is strictly instructed to always use fully resolved, absolute paths. This ensures the raw strings match our structural regex perfectly, allowing legitimate actions to pass while traversal attacks (`../`) are physically blocked.
+~~## The Internal Physics: `stableStringify`~~
+~~*(This section previously detailed an undocumented Null-Byte `\0` structural anchoring trick to prevent Parameter Injection. It is now obsolete as the wrapper has migrated to the official `toolAnnotations = { "restrictedPaths" = ... }` schema, which is currently blocked by the bug described above.)*~~

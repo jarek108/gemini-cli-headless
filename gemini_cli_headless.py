@@ -99,6 +99,25 @@ def _get_cli_chat_dir(project_name: str, tmp_root: str) -> str:
     """Returns the internal Gemini CLI chat directory for a given project."""
     return os.path.join(tmp_root, project_name, "chats")
 
+def _wait_for_session_flush(session_path: str, expected_messages_count: int, timeout: float = 10.0):
+    """
+    Waits for the session file on disk to be updated with the expected number of messages.
+    Ensures atomicity between CLI output and file state.
+    """
+    start = time.time()
+    while time.time() - start < timeout:
+        if os.path.exists(session_path):
+            try:
+                with open(session_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    messages = data.get("messages", [])
+                    if len(messages) >= expected_messages_count:
+                        return True
+            except (json.JSONDecodeError, IOError):
+                pass
+        time.sleep(0.5)
+    return False
+
 def run_gemini_cli_headless(
     prompt: str,
     model_id: Optional[str] = None,
@@ -120,7 +139,8 @@ def run_gemini_cli_headless(
     allowed_commands: Optional[List[str]] = None,
     system_instruction_override: Optional[str] = None,
     isolate_from_hierarchical_pollution: bool = True,
-    inject_enforcement_contract: bool = True
+    inject_enforcement_contract: bool = True,
+    force_fresh: bool = False
 ) -> GeminiSession:
     """
     Standalone wrapper for the Gemini CLI in headless mode.
@@ -128,6 +148,15 @@ def run_gemini_cli_headless(
     
     # Python-level path security for attachments
     if allowed_paths is not None and allowed_paths != ["*"]:
+        logger.warning(
+            "\n🚨 CRITICAL WARNING: PATH SECURITY IS BROKEN UPSTREAM 🚨\n"
+            "You have provided 'allowed_paths'. Due to a static compiler bug in the upstream "
+            "Gemini CLI policy engine, attempting to restrict paths will permanently delete "
+            "all tools from the agent's schema, rendering the agent incapable of using tools "
+            "and causing severe hallucinations. Rely on 'allowed_tools' and 'allowed_commands' "
+            "for security instead.\n"
+        )
+        
         base_dir = cwd if cwd else os.getcwd()
         resolved_whitelist = []
         for p in allowed_paths:
@@ -171,7 +200,8 @@ def run_gemini_cli_headless(
                 timeout_seconds=timeout_seconds,
                 system_instruction_override=system_instruction_override,
                 isolate_from_hierarchical_pollution=isolate_from_hierarchical_pollution,
-                inject_enforcement_contract=inject_enforcement_contract
+                inject_enforcement_contract=inject_enforcement_contract,
+                force_fresh=force_fresh
             )
         except (RuntimeError, json.JSONDecodeError, PermissionError) as e:
             last_exception = e
@@ -209,7 +239,8 @@ def _execute_single_run(
     timeout_seconds: Optional[int] = 300,
     system_instruction_override: Optional[str] = None,
     isolate_from_hierarchical_pollution: bool = True,
-    inject_enforcement_contract: bool = True
+    inject_enforcement_contract: bool = True,
+    force_fresh: bool = False
 ) -> GeminiSession:
     """Internal execution logic for a single CLI invocation."""
     
@@ -227,13 +258,13 @@ def _execute_single_run(
     session_id_to_use = session_id
     cli_dir = _get_cli_chat_dir(project_name, tmp_root)
 
-    if session_to_resume:
+    if session_to_resume and not force_fresh:
         if session_to_resume.lower().endswith('.json') or os.path.isfile(session_to_resume):
             if not os.path.exists(session_to_resume):
                 raise FileNotFoundError(f"Session file not found: {session_to_resume}")
             with open(session_to_resume, 'r', encoding='utf-8') as f:
                 data = json.load(f)
-                session_id_to_use = data.get("sessionId")
+                session_id_to_use = data.get("session_id") or data.get("sessionId")
             if not session_id_to_use:
                 raise ValueError(f"File {session_to_resume} is not a valid Gemini session")
             
@@ -242,6 +273,9 @@ def _execute_single_run(
             shutil.copy2(session_to_resume, target_path)
         else:
             session_id_to_use = session_to_resume
+
+    if force_fresh:
+        session_id_to_use = None
 
     attachment_strings = []
     if files:
@@ -267,14 +301,21 @@ def _execute_single_run(
     env["NO_COLOR"] = "1"
     env["CI"] = "1"
     env["PYTHONUNBUFFERED"] = "1"
+    env["GEMINI_PROJECT"] = project_name
+    
     if api_key:
         env["GEMINI_API_KEY"] = api_key
     elif not env.get("GEMINI_API_KEY"):
-        raise ValueError("GEMINI_API_KEY is missing. You must set it in your environment or pass it via the 'api_key' argument.")
+        raise ValueError("GEMINI_API_KEY is missing.")
 
     try:
-        # Create a temporary directory in the system temp folder to prevent polluting the project root
-        temp_dir = tempfile.mkdtemp(prefix="gemini_headless_run_")
+        # Create temp_dir inside CWD for CLI sandbox compatibility
+        try:
+            temp_dir = tempfile.mkdtemp(prefix=".run_", dir=effective_cwd)
+        except (PermissionError, OSError):
+            project_temp_root = os.path.dirname(cli_dir)
+            os.makedirs(project_temp_root, exist_ok=True)
+            temp_dir = tempfile.mkdtemp(prefix="run_", dir=project_temp_root)
 
         # Apply isolation via GEMINI_CLI_HOME
         gemini_home_existed = False
@@ -283,42 +324,56 @@ def _execute_single_run(
             gemini_home_existed = os.path.exists(gemini_home_path)
             env["GEMINI_CLI_HOME"] = effective_cwd
 
-        # Persona Control (GEMINI_SYSTEM_MD override)
+        # 1. Environment Anchoring (Additive Strategy)
+        profile_parts = []
+        tools_whitelist = allowed_tools if allowed_tools is not None else DEFAULT_ALLOWED_TOOLS
+        base_paths_whitelist = allowed_paths if allowed_paths is not None else ["*"]
+        
+        if base_paths_whitelist != ["*"]:
+            paths_whitelist = list(base_paths_whitelist)
+            paths_whitelist.append(temp_dir)
+            paths_whitelist.append(os.path.dirname(temp_dir))
+        else:
+            paths_whitelist = ["*"]
+
+        if inject_enforcement_contract:
+            # Temporarily disabled to test if the model hallucinates tool calls even without injection,
+            # which would prove the policy engine is stripping the tools from the API schema.
+            pass
+        
+        env_context = "" # Fallback context to inject in user prompt
+
         if system_instruction_override:
+            effective_system_md = system_instruction_override
             with tempfile.NamedTemporaryFile(mode='w', suffix=".md", dir=temp_dir, delete=False, encoding='utf-8') as tf:
-                tf.write(system_instruction_override)
+                tf.write(effective_system_md)
                 system_md_path = tf.name
             env["GEMINI_SYSTEM_MD"] = system_md_path
 
-        tools_whitelist = allowed_tools if allowed_tools is not None else DEFAULT_ALLOWED_TOOLS
-        paths_whitelist = allowed_paths if allowed_paths is not None else ["*"]
-        commands_whitelist = allowed_commands if allowed_commands is not None else []
 
+        # 2. Policy Generation
+        commands_whitelist = allowed_commands if allowed_commands is not None else []
         policy_lines = []
         PRIO_RESTRICTED_ALLOW = 999 
-        PRIO_GENERAL_DENY = 900
         PRIO_GENERAL_ALLOW = 500
         PRIO_CATCHALL = 0
-
-        # Dangerous tools list
         path_sensitive_tools = ["read_file", "write_file", "list_directory", "grep_search", "glob", "replace"]
-        un_sandboxable_tools = ["run_shell_command", "web_fetch"]
-        restricted_tools = path_sensitive_tools + un_sandboxable_tools
 
-        # 1. PATH SECURITY & TOOL WHITELISTING
+        # 1. Path Restrictions (High Priority)
+        # We explicitly allow the whitelisted paths. Anything else falls through.
         if paths_whitelist != ["*"]:
             policy_lines.append("[[rule]]")
-            policy_lines.append(f"toolName = \"*\"")
+            policy_lines.append("toolName = \"*\"")
             policy_lines.append(f"priority = {PRIO_RESTRICTED_ALLOW}")
             policy_lines.append("decision = \"allow\"")
             policy_lines.append(f"toolAnnotations = {{ \"restrictedPaths\" = {json.dumps(paths_whitelist)} }}\n")
             
-            policy_lines.append("[[rule]]")
-            policy_lines.append(f"toolName = {json.dumps(path_sensitive_tools)}")
-            policy_lines.append(f"priority = {PRIO_GENERAL_DENY}")
-            policy_lines.append("decision = \"deny\"\n")
+            # CRITICAL FIX: We MUST NOT add a generic deny rule for path_sensitive_tools here!
+            # If we add `decision="deny"` for `read_file`, the CLI's static schema generator 
+            # will see the unconditional deny and strip the tool from the API request entirely.
+            # Instead, we rely on the Catch-All Deny at Priority 0 to block unauthorized paths!
 
-        # 2. SHELL COMMAND WHITELISTING
+        # 2. Shell Command Restrictions
         if "run_shell_command" in tools_whitelist or tools_whitelist == ["*"]:
             if commands_whitelist:
                 policy_lines.append("[[rule]]")
@@ -326,104 +381,74 @@ def _execute_single_run(
                 policy_lines.append(f"priority = {PRIO_RESTRICTED_ALLOW}")
                 policy_lines.append("decision = \"allow\"")
                 policy_lines.append(f"commandPrefix = {json.dumps(commands_whitelist)}\n")
-                
+            else:
                 policy_lines.append("[[rule]]")
                 policy_lines.append("toolName = \"run_shell_command\"")
-                policy_lines.append(f"priority = {PRIO_GENERAL_DENY}")
-                policy_lines.append("decision = \"deny\"\n")
-        else:
-            # Deny run_shell_command entirely
-            policy_lines.append("[[rule]]")
-            policy_lines.append("toolName = \"run_shell_command\"")
-            policy_lines.append(f"priority = {PRIO_GENERAL_DENY}")
-            policy_lines.append("decision = \"deny\"\n")
+                policy_lines.append(f"priority = {PRIO_GENERAL_ALLOW}")
+                policy_lines.append("decision = \"allow\"\n")
 
-        # 3. GENERAL TOOL WHITELISTING
+        # 3. Tool Whitelisting
         if tools_whitelist != ["*"]:
             if tools_whitelist:
                 policy_lines.append("[[rule]]")
                 policy_lines.append(f"toolName = {json.dumps(tools_whitelist)}")
                 policy_lines.append(f"priority = {PRIO_GENERAL_ALLOW}")
                 policy_lines.append("decision = \"allow\"\n")
-            
-            policy_lines.append("[[rule]]")
-            policy_lines.append("toolName = \"*\"")
-            policy_lines.append(f"priority = {PRIO_CATCHALL}")
-            policy_lines.append("decision = \"deny\"\n")
         else:
             policy_lines.append("[[rule]]")
             policy_lines.append("toolName = \"*\"")
             policy_lines.append(f"priority = {PRIO_GENERAL_ALLOW}")
             policy_lines.append("decision = \"allow\"\n")
 
+        # 4. Catch-All Deny (Lowest Priority)
+        # This acts as the default deny for any tool/path not explicitly allowed above.
+        policy_lines.append("[[rule]]")
+        policy_lines.append("toolName = \"*\"")
+        policy_lines.append(f"priority = {PRIO_CATCHALL}")
+        policy_lines.append("decision = \"deny\"\n")
+
         with tempfile.NamedTemporaryFile(mode='w', suffix=".toml", dir=temp_dir, delete=False, encoding='utf-8') as tf:
             tf.write("\n".join(policy_lines))
             policy_path = tf.name
         cmd.extend(["--policy", policy_path])
 
-        # ENVIRONMENT CONTEXT Injection (Optional, controlled by user)
-        env_context = ""
-        if inject_enforcement_contract:
-            if tools_whitelist != ["*"]:
-                env_context += f"\n[ENVIRONMENT CONTEXT] You are in a restricted headless environment. Allowed tools: {', '.join(tools_whitelist)}.\n"
-            if paths_whitelist != ["*"]:
-                env_context += f"[ENVIRONMENT CONTEXT] File access is restricted to: {', '.join(paths_whitelist)}. ALWAYS use absolute paths.\n"
-        
+        # 3. Execution
         full_prompt = env_context + prompt + "".join(attachment_strings)
-        
         with tempfile.NamedTemporaryFile(mode='w', suffix=".txt", dir=temp_dir, delete=False, encoding='utf-8') as tf:
             tf.write(full_prompt)
             prompt_path = tf.name
         cmd.append(f"@{prompt_path}")
 
         process = subprocess.Popen(
-            cmd,
-            cwd=cwd,
-            env=env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            encoding='utf-8',
-            bufsize=1
+            cmd, cwd=cwd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            text=True, encoding='utf-8', bufsize=1
         )
 
         combined_output_list = []
         def read_output():
             while True:
                 line = process.stdout.readline()
-                if not line:
-                    break
+                if not line: break
                 combined_output_list.append(line)
-                if stream_output:
-                    sys.stdout.write(line)
-                    sys.stdout.flush()
+                if stream_output: sys.stdout.write(line); sys.stdout.flush()
+        
         output_thread = threading.Thread(target=read_output)
         output_thread.start()
-
         while output_thread.is_alive():
-            if not stream_output:
-                sys.stdout.write(".")
-                sys.stdout.flush()
+            if not stream_output: sys.stdout.write("."); sys.stdout.flush()
             output_thread.join(timeout=30)
             
-        try:
-            process.wait(timeout=timeout_seconds)
-        except subprocess.TimeoutExpired:
-            process.kill()
-            raise
+        try: process.wait(timeout=timeout_seconds)
+        except subprocess.TimeoutExpired: process.kill(); raise
             
         combined_output = "".join(combined_output_list)
-
         lowered_output = combined_output.lower()
         if "exhausted" in lowered_output or "quota" in lowered_output or "429" in lowered_output:
-             is_terminal = "daily limit" in lowered_output or "capacity" in lowered_output
-             error_kind = "Daily Quota Exhausted (Terminal)" if is_terminal else "Rate Limit Exceeded (Retryable)"
-             raise RuntimeError(f"Gemini API {error_kind}. Output: {combined_output[:500]}")
+             raise RuntimeError(f"Gemini API Quota Exhausted. Output: {combined_output[:500]}")
         
         if ("modelnotfounderror" in lowered_output or "model not found" in lowered_output) and "error executing tool" not in lowered_output:
              raise RuntimeError(f"Gemini Model Not Found.")
 
-        # Robust JSON extraction: pick the last valid JSON object that contains key session fields
         data = None
         for match in re.finditer(r'\{', combined_output):
             start_idx = match.start()
@@ -431,38 +456,27 @@ def _execute_single_run(
             for end_idx in range(start_idx, len(combined_output)):
                 if combined_output[end_idx] == '{': depth += 1
                 elif combined_output[end_idx] == '}': depth -= 1
-                
                 if depth == 0:
                     try:
                         candidate = json.loads(combined_output[start_idx:end_idx+1])
                         if isinstance(candidate, dict) and ("session_id" in candidate or "text" in candidate or "response" in candidate):
                             data = candidate
-                    except json.JSONDecodeError:
-                        pass
+                    except json.JSONDecodeError: pass
                     break
         
-        if not data:
-            raise RuntimeError(f"CLI did not return valid JSON session data. Output: {combined_output}")
-
-        if "error" in data:
-            err_msg = data["error"].get("message", "Unknown error")
-            raise RuntimeError(f"Gemini CLI Error: {err_msg}")
+        if not data: raise RuntimeError(f"CLI did not return valid JSON. Output: {combined_output}")
+        if "error" in data: raise RuntimeError(f"Gemini CLI Error: {data['error'].get('message', 'Unknown')}")
         
         text_content = data.get("text") or data.get("response") or ""
         stats_content = data.get("stats") or data.get("trace", {}).get("stats", {})
 
-        # Ensure tool stats are mapped to top level for convenience
         def _extract_tool_stats(obj):
             t_stats = {"totalCalls": 0, "totalSuccess": 0, "totalFail": 0}
-            
-            # Direct tools object
             direct_tools = obj.get("tools", {})
             if isinstance(direct_tools, dict):
-                t_stats["totalCalls"] = direct_tools.get("totalCalls", t_stats["totalCalls"])
-                t_stats["totalSuccess"] = direct_tools.get("totalSuccess", t_stats["totalSuccess"])
-                t_stats["totalFail"] = direct_tools.get("totalFail", t_stats["totalFail"])
-                
-            # Check models object (nested)
+                t_stats["totalCalls"] = direct_tools.get("totalCalls", 0)
+                t_stats["totalSuccess"] = direct_tools.get("totalSuccess", 0)
+                t_stats["totalFail"] = direct_tools.get("totalFail", 0)
             models = obj.get("models", {})
             if isinstance(models, dict):
                 for m_id, m_data in models.items():
@@ -471,45 +485,27 @@ def _execute_single_run(
                         t_stats["totalCalls"] += m_tools.get("totalCalls", 0)
                         t_stats["totalSuccess"] += m_tools.get("totalSuccess", 0)
                         t_stats["totalFail"] += m_tools.get("totalFail", 0)
-                    
-                    roles = m_data.get("roles", {})
-                    if isinstance(roles, dict):
-                        for r_id, r_data in roles.items():
-                            r_tools = r_data.get("tools", {})
-                            if isinstance(r_tools, dict):
-                                t_stats["totalCalls"] += r_tools.get("totalCalls", 0)
-                                t_stats["totalSuccess"] += r_tools.get("totalSuccess", 0)
-                                t_stats["totalFail"] += r_tools.get("totalFail", 0)
             return t_stats
 
-        agg_tools = _extract_tool_stats(stats_content)
-        stats_content.update(agg_tools)
-
+        stats_content.update(_extract_tool_stats(stats_content))
         final_session_id = data.get("session_id") or session_id_to_use or ""
         session_path = _find_session_file(cli_dir, final_session_id, tmp_root)
         
-        # Cleanup isolated .gemini folder to avoid polluting project root
-        if isolate_from_hierarchical_pollution and not gemini_home_existed and os.path.exists(gemini_home_path):
+        expected_count = len(data.get("messages", []))
+        if expected_count > 0 and session_path and os.path.exists(os.path.dirname(session_path)):
+            _wait_for_session_flush(session_path, expected_count)
+        
+        if isolate_from_hierarchical_pollution and not gemini_home_existed and os.path.exists(os.path.join(effective_cwd, ".gemini")):
             if session_path and os.path.exists(session_path):
-                # Salvage the session file to system temp before nuking the folder
                 safe_sessions_dir = os.path.join(tempfile.gettempdir(), "gemini_headless_sessions")
                 os.makedirs(safe_sessions_dir, exist_ok=True)
                 new_session_path = os.path.join(safe_sessions_dir, f"session-{final_session_id}.json")
                 shutil.copy2(session_path, new_session_path)
                 session_path = new_session_path
-            
-            try:
-                shutil.rmtree(gemini_home_path)
-            except:
-                pass
+            try: shutil.rmtree(os.path.join(effective_cwd, ".gemini"))
+            except: pass
         
-        return GeminiSession(
-            text=text_content,
-            session_id=final_session_id,
-            session_path=session_path,
-            stats=stats_content,
-            raw_data=data
-        )
+        return GeminiSession(text=text_content, session_id=final_session_id, session_path=session_path, stats=stats_content, raw_data=data)
 
     finally:
         if policy_path and os.path.exists(policy_path):

@@ -15,7 +15,10 @@ export GEMINI_API_KEY="your-api-key"
 Alternatively, you can pass it directly to the function using the `api_key` argument. The wrapper will fail with a clear `ValueError` if the key is completely missing.
 
 **Example 1: The Secure Coding Agent**
-Allow the agent to edit files, but strictly confine it to a specific directory and whitelist exactly which shell commands it can run.
+Allow the agent to edit files and whitelist exactly which shell commands it can run.
+
+> **🚨 CRITICAL WARNING: PATH SECURITY IS CURRENTLY BROKEN 🚨**
+> Do NOT use the `allowed_paths` parameter in the current version. Due to a static compiler bug in the upstream Gemini CLI policy engine, attempting to restrict paths will permanently delete all tools from the agent's schema, causing severe hallucinations. Rely on `allowed_tools` and `allowed_commands` for security instead. *(See the `canary_tool_presence_baseline` vs `canary_upstream_compiler_bug` tests in our integration suite for reproducible proof of this defect).*
 
 ```python
 import os
@@ -28,8 +31,8 @@ session = run_gemini_cli_headless(
     cwd=project_root,
     # 1. Physical Tool Sandbox
     allowed_tools=["read_file", "replace", "run_shell_command"],
-    # 2. Physical Path Sandbox
-    allowed_paths=[project_root], 
+    # ~~2. Physical Path Sandbox~~ (Currently broken upstream, do not use)
+    # allowed_paths=[project_root], 
     # 3. Surgical Shell Sandbox
     allowed_commands=["npm test", "git status"] 
 )

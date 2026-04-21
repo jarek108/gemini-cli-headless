@@ -213,3 +213,5 @@ __marimo__/
 # Integrity Test Artifacts
 test_integrity_sandbox_*/
 parent_secret_*.txt
+tests/traces/
+tests/debug_*.py

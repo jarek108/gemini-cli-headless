@@ -70,15 +70,28 @@ The Gemini CLI is designed to be helpful; it aggressively loads context from `.g
 
 During the integration test battery, running 20+ security tests sequentially in the same directory caused massive "Context Drift." The model would hallucinate errors from Test #3 while running Test #18, causing token consumption to skyrocket (resulting in expensive runs and API 429 Quota Exhaustion).
 
-### The "Silo" Architecture
+### The "Silo" Architecture & Artifact Preservation
 To ensure pristine testing conditions, `run_integration_tests.py` now generates a completely isolated environment inside the system temporary directory (not the project root) for every single test case to keep the workspace clean:
 1.  Orphaned silos are automatically cleaned up at the start of every run to prevent temporary storage bloat.
 2.  It generates a unique UUID (e.g., `gemini_headless_silo_a8f3b1...`).
 3.  It constructs a fresh filesystem inside that UUID folder.
 4.  It invokes the headless wrapper with a unique `project_name` (`integrity-a8f3b1...`), forcing the CLI to create a completely siloed internal chat history for that specific run.
-5.  After the test is evaluated, it obliterates the unique folder.
+5.  After the test is evaluated, it does **not** obliterate the folder if we need to debug. Instead, it securely moves the entire silo, the generated session JSONs, and metadata into `tests/traces/<timestamp>/<test_name>/` for post-mortem analysis.
 
-This guarantees that every security test evaluates the engine in a perfect vacuum.
+This guarantees that every security test evaluates the engine in a perfect vacuum, while preserving a complete "flight recorder" trace of the failure.
+
+## 100% Prompt Transparency
+
+Because the Gemini CLI performs a "Late Merge" of its internal hardcoded "Software Engineer" preamble with our workspace-specific profile just before contacting Google's API, the final prompt is usually a black box.
+
+To provide 100% transparency for security auditing, the integration test battery extracts the hardcoded CLI preamble from the upstream source code (cached in `tests/system_preamble.md`). 
+
+When a test is preserved in the `traces/` directory, you will find a `reconstructed_final_prompt.md` file. This file perfectly mirrors the CLI's internal concatenation, showing you exactly what the engine saw:
+1. The CLI's base identity.
+2. The local `GEMINI.md` (which we use for non-destructive Additive Profile enrichment).
+3. The User Prompt.
+
+This eliminates guesswork when diagnosing "Tool Shyness" or cognitive refusals (`[MODEL FAIL]`).
 
 ## Local WSL Integration Testing
 
