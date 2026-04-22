@@ -63,7 +63,7 @@ When building workflows, developers face enormous pain points that `gemini-cli-h
 
 **1. The Persona Problem & Model Identity**
 The CLI has a hardcoded "Software Engineer" identity. Try asking it to simply extract JSON from a document, and it will often refuse or start explaining its engineering credentials.
-*   *Our Solution:* We implemented the `system_instruction_override` parameter to completely wipe the agent's mind and replace it with your instructions. Read about how we handle model paranoia and identity in **[Controlling the Agent's Mind](docs/02_prompt_composition_and_soft_interception.md)**.
+*   *Our Solution:* Use the `system_instruction_override` parameter to completely wipe the agent's mind and replace it with your instructions. Read about how we handle model paranoia and identity in **[Controlling the Agent's Mind](docs/02_prompt_composition_and_soft_interception.md)**.
 
 **2. Inconsistent Sandboxing & Dangerous Defaults**
 Headless mode requires using `--raw-output` and the `--yolo` flag. By default, the agent has free rein over your filesystem and shell. Trying to restrict the agent to a specific folder or a specific set of tools via CLI flags is extremely difficult and non-transparent.
@@ -78,9 +78,10 @@ We have done our best not only to provide clear controls for these challenges, b
 
 ### Recommended Models
 For the best balance of speed, cost, and obedience to the strict sandboxing rules, we strongly recommend using the following specific models:
-1.  **`gemini-3.1-flash-lite-preview`**: The best choice for high-volume, tool-restricted tasks and data extraction. Extremely fast.
-2.  **`gemini-3-flash-preview`**: Excellent middle ground for agents that need to use basic tools (read/write files) rapidly.
-3.  **`gemini-3.1-pro-preview`**: Use this when the task requires deep reasoning or complex, multi-step shell orchestrations.
+1.  **`gemini-3-flash-preview`**: Excellent middle ground for agents that need to use basic tools (read/write files) rapidly.
+2.  **`gemini-3.1-pro-preview`**: Use this when the task requires deep reasoning or complex, multi-step orchestrations.
+3.  **`gemini-3.1-flash-lite-preview`**: Best for high-volume, tool-restricted tasks and data extraction. Extremely fast and cheap.
+
 
 ### Testing the Sandbox (The Integration Test Battery)
 Do not use `pytest` directly to verify the security of the engine. Standard tests only check the model's text output, which is unreliable.
