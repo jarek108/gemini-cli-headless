@@ -2,7 +2,7 @@
 
 ❗ **Note:** Project finalized until upstream `gemini-cli` path-bug resolution or new requests.
 
-![Gemini CLI Headless Hero](docs/assets/hero_image.png)
+![Gemini CLI Headless Hero](https://raw.githubusercontent.com/jarek108/gemini-cli-headless/main/docs/assets/hero_image.png)
 
 `gemini-cli-headless` is a Python-based wrapper for the [Gemini CLI](https://github.com/google-gemini/gemini-cli). It provides a secure, programmatically controllable execution environment designed for autonomous agents, automated workflows, and complex data extraction. This wrapper is fully tested and supported on both Windows and Linux, automatically adapting its security boundaries to the host OS. For technical details on how OS differences are handled, see **[Cross-Platform Architecture](docs/08_cross_platform_architecture.md)**.
 
