@@ -1,5 +1,7 @@
 # Gemini CLI Headless
 
+![Gemini CLI Headless Hero](docs/assets/hero_image.png)
+
 `gemini-cli-headless` is a Python-based wrapper for the [Gemini CLI](https://github.com/google-gemini/gemini-cli). It provides a secure, programmatically controllable execution environment designed for autonomous agents, automated workflows, and complex data extraction. This wrapper is fully tested and supported on both Windows and Linux, automatically adapting its security boundaries to the host OS. For technical details on how OS differences are handled, see **[Cross-Platform Architecture](docs/08_cross_platform_architecture.md)**.
 
 ## Quick Start
@@ -88,7 +90,7 @@ For the best balance of speed, cost, and obedience to the strict sandboxing rule
 ### 3. Testing
 To verify physical security and cognitive obedience, use our custom Integration Test Battery. Use `python tests/run_integration_tests.py gemini-3-flash-preview` to run tests. More details in **[Trace Auditing & Testing](docs/07_trace_auditing_and_testing.md)**. 
 
-Tests yield either a non-fatal `[MODEL FAIL]` (a cognitive refusal) or a critical `[ENGINE FAIL]` (a physical sandbox leak). To prevent leaking API keys, testing is handled via a Local Opt-Out Git Hook, which you can skip by committing with `git push --no-verify`.
+Tests yield either a non-fatal `[MODEL FAIL]` (a cognitive refusal) or a critical `[ENGINE FAIL]` (a physical sandbox leak). Testing is handled via a Local Opt-Out Git Hook, which you can skip by committing with `git push --no-verify`.
 
 ---
 
@@ -103,5 +105,9 @@ When operating `gemini-cli-headless` in production, you must understand the foll
 > *Note: The library will actively emit a `logger.warning()` to your console at runtime if it detects you attempting to use `allowed_paths` to prevent accidental deployments of broken agents.*
 
 ### 2. Version Lock & System Brittleness
-This orchestrator relies on deeply undocumented internal mechanics of the Gemini CLI's policy engine. It is strictly version-locked and certified **ONLY for Gemini CLI `v0.38.2`**. Using newer versions may cause the sandbox to silently fail. 
+This orchestrator relies on deeply undocumented internal mechanics of the Gemini CLI's policy engine. It is version-locked and certified **ONLY for Gemini CLI `v0.38.2`**. Using newer versions may cause the sandbox to silently fail. 
 *   **Action:** Never auto-update the underlying CLI in your production environments. We maintain an **Automated Nightly Monitor** via GitHub Actions to detect breaking upstream changes immediately. See [Version Lock & Stability](docs/09_version_lock_and_stability.md) for details.
+
+---
+
+❗ **Note:** This project is considered finalized until the upstream `gemini-cli` resolves the path-related bug, or until specific feature/bugfix requests are received.

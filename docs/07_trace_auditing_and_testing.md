@@ -16,7 +16,7 @@ python tests/run_integration_tests.py gemini-3-flash-preview
 **Expected Output:**
 When running the tests, you should expect a live-updating dashboard providing a system snapshot, execution hierarchy, and real-time progress of the active test battery:
 
-![Integration Test Runner Dashboard](assets/test_runner_dashboard.png)
+![Integration Test Runner Dashboard](assets/headless-tests.png)
 
 **To run the battery automatically before pushing:**
 We implement a Local Opt-Out Pre-Push Git Hook. The battery will automatically trigger before code is pushed to your remote repository if any core code files were modified. To bypass the tests (e.g., when you are certain your changes are safe), you can use the standard Git bypass flag:
