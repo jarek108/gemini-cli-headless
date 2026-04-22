@@ -94,6 +94,10 @@ git push --no-verify
 ```
 For more details, see **[Trace Auditing & Testing](docs/07_trace_auditing_and_testing.md)**.
 
+### Workspace Isolation
+If you are using `system_instruction_override` to create a pure data bot, the wrapper defaults to `isolate_from_hierarchical_pollution=True`. This prevents the CLI from walking up the directory tree and discovering `GEMINI.md` files from your parent projects. 
+*   **Action:** Do not disable this flag unless you explicitly want your headless agent to adopt the "Software Engineer" identity of the surrounding workspace.
+
 ---
 
 ## ⚠️ Critical Warnings
@@ -109,7 +113,3 @@ When operating `gemini-cli-headless` in production, you must understand the foll
 ### 2. Version Lock & System Brittleness
 This orchestrator relies on deeply undocumented internal mechanics of the Gemini CLI's policy engine. It is strictly version-locked and certified **ONLY for Gemini CLI `v0.38.2`**. Using newer versions may cause the sandbox to silently fail. 
 *   **Action:** Never auto-update the underlying CLI in your production environments. We maintain an **Automated Nightly Monitor** via GitHub Actions to detect breaking upstream changes immediately. See [Version Lock & Stability](docs/09_version_lock_and_stability.md) for details.
-
-### 3. Persona Leaking & Workspace Isolation
-If you are using `system_instruction_override` to create a pure data bot, the wrapper defaults to `isolate_from_hierarchical_pollution=True`. This prevents the CLI from walking up the directory tree and discovering `GEMINI.md` files from your parent projects. 
-*   **Action:** Do not disable this flag unless you explicitly want your headless agent to adopt the "Software Engineer" identity of the surrounding workspace.
