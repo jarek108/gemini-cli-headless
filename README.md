@@ -76,28 +76,19 @@ If you run the raw CLI inside your project, it stealthily searches parent direct
 We have done our best not only to provide clear controls for these challenges, but also to create a suite of smart edge-case tests to verify this safety. You can learn about our trace auditing in **[How We Test](docs/07_trace_auditing_and_testing.md)**. For detailed API references and advanced configuration options, also take a look at the **[Usage & Examples page](docs/01_examples_and_usage.md)**.
 ## Best Practices
 
-### Recommended Models
+### 1. Workspace Isolation
+If you are using `system_instruction_override` to create a pure data bot, the wrapper defaults to `isolate_from_hierarchical_pollution=True`. This prevents the CLI from walking up the directory tree and discovering `GEMINI.md` files from your parent projects. Do not disable this flag unless you explicitly want your headless agent to adopt the "Software Engineer" identity of the surrounding workspace.
+
+### 2. Recommended Models
 For the best balance of speed, cost, and obedience to the strict sandboxing rules, we strongly recommend using the following specific models:
-1.  **`gemini-3-flash-preview`**: Excellent middle ground for agents that need to use basic tools (read/write files) rapidly.
-2.  **`gemini-3.1-pro-preview`**: Use this when the task requires deep reasoning or complex, multi-step orchestrations.
-3.  **`gemini-3.1-flash-lite-preview`**: Best for high-volume, tool-restricted tasks and data extraction. Extremely fast and cheap.
+*   **`gemini-3-flash-preview`**: Excellent middle ground for agents that need to use basic tools (read/write files) rapidly.
+*   **`gemini-3.1-pro-preview`**: Use this when the task requires deep reasoning or complex, multi-step orchestrations.
+*   **`gemini-3.1-flash-lite-preview`**: Best for high-volume, tool-restricted tasks and data extraction. Fast and cheap.
 
+### 3. Testing
+To verify physical security and cognitive obedience, use our custom Integration Test Battery. Use `python tests/run_integration_tests.py gemini-3-flash-preview` to run tests. More details in **[Trace Auditing & Testing](docs/07_trace_auditing_and_testing.md)**. 
 
-### Testing the Sandbox (The Integration Test Battery)
-Do not use `pytest` directly to verify the security of the engine. Standard tests only check the model's text output, which is unreliable.
-*   **Action:** To verify physical security and cognitive obedience, use our custom Integration Test Battery. It executes 29 extreme edge cases and provides a crucial breakdown between **[MODEL FAIL]** (a cognitive refusal; does not block CI) and **[ENGINE FAIL]** (a physical sandbox leak; fatally blocks CI).
-
-To prevent leaking API keys to the cloud, testing is handled via a **Local Opt-Out Git Hook**. 
-The 3-minute Integration Test Battery will automatically trigger *before* code is pushed to your remote repository if any core code files were modified. To bypass the tests (e.g., for simple updates or docs), use the standard Git bypass flag:
-
-```bash
-git push --no-verify
-```
-For more details, see **[Trace Auditing & Testing](docs/07_trace_auditing_and_testing.md)**.
-
-### Workspace Isolation
-If you are using `system_instruction_override` to create a pure data bot, the wrapper defaults to `isolate_from_hierarchical_pollution=True`. This prevents the CLI from walking up the directory tree and discovering `GEMINI.md` files from your parent projects. 
-*   **Action:** Do not disable this flag unless you explicitly want your headless agent to adopt the "Software Engineer" identity of the surrounding workspace.
+Tests yield either a non-fatal `[MODEL FAIL]` (a cognitive refusal) or a critical `[ENGINE FAIL]` (a physical sandbox leak). To prevent leaking API keys, testing is handled via a Local Opt-Out Git Hook, which you can skip by committing with `git push --no-verify`.
 
 ---
 
