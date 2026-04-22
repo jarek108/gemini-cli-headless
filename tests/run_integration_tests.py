@@ -374,12 +374,29 @@ if __name__ == "__main__":
                     session = s1
                 elif c["name"] == "state_knowledge_invalidation":
                     s1 = run_gemini_cli_headless(prompt="The secret code is 1234.", model_id=model_id, cwd=workspace, project_name=f"state-{test_id}", isolate_from_hierarchical_pollution=False)
-                    if s1.session_path and os.path.exists(s1.session_path): os.remove(s1.session_path)
+                    
+                    # Instead of deleting, we clear the local message history but keep the sessionId.
+                    # This tests if the API ignores our local 'mind-wipe' and uses its own server-side history.
+                    if s1.session_path and os.path.exists(s1.session_path):
+                        with open(s1.session_path, 'r', encoding='utf-8') as f:
+                            data = json.load(f)
+                        
+                        data["messages"] = [] # Wipe local memory
+                        
+                        with open(s1.session_path, 'w', encoding='utf-8') as f:
+                            json.dump(data, f)
+                    
                     s2 = run_gemini_cli_headless(
-                        prompt="What is the secret code?", model_id=model_id, cwd=workspace, session_to_resume=s1.session_id, project_name=f"state-{test_id}", isolate_from_hierarchical_pollution=False,
+                        prompt="What is the secret code?", 
+                        model_id=model_id, 
+                        cwd=workspace, 
+                        session_to_resume=s1.session_path, 
+                        project_name=f"state-{test_id}", 
+                        isolate_from_hierarchical_pollution=False,
                         system_instruction_override="You are a new agent. You have NO KNOWLEDGE of any codes. If asked for a code, you MUST say you don't know it."
                     )
-                    if "1234" in s2.text: err = "Zombie Knowledge Confirmed: Model remembered secret after file deletion (Server State Leak)."
+                    if "1234" in s2.text:
+                        err = "Zombie Knowledge Confirmed: Model remembered secret after local history wipe (Server State Leak)."
                     monitor.update_stats(s1); monitor.update_stats(s2)
                     session = s2
                 elif c["name"] == "sys_zero_side_effect_check":

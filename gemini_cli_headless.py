@@ -259,20 +259,41 @@ def _execute_single_run(
     session_id_to_use = session_id
     cli_dir = _get_cli_chat_dir(project_name, tmp_root)
 
+    # ZOMBIE KNOWLEDGE PROTECTION: Detect if we should force a fresh session
     if session_to_resume and not force_fresh:
+        # Resolve the source path
+        source_path = None
         if session_to_resume.lower().endswith('.json') or os.path.isfile(session_to_resume):
-            if not os.path.exists(session_to_resume):
-                raise FileNotFoundError(f"Session file not found: {session_to_resume}")
-            with open(session_to_resume, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-                session_id_to_use = data.get("session_id") or data.get("sessionId")
-            if not session_id_to_use:
-                raise ValueError(f"File {session_to_resume} is not a valid Gemini session")
-            
-            os.makedirs(cli_dir, exist_ok=True)
-            target_path = os.path.join(cli_dir, f"session-{session_id_to_use}.json")
-            shutil.copy2(session_to_resume, target_path)
+            source_path = session_to_resume
         else:
+            # Try to find it by ID
+            source_path = _find_session_file(cli_dir, session_to_resume, tmp_root)
+        
+        if source_path and os.path.exists(source_path):
+            try:
+                with open(source_path, 'r', encoding='utf-8') as f:
+                    old_data = json.load(f)
+                
+                # Check for instruction change
+                old_instruction = old_data.get("systemInstruction", "")
+                if system_instruction_override and old_instruction and system_instruction_override.strip() != old_instruction.strip():
+                    logger.info("System instruction change detected. Forcing fresh session to prevent zombie knowledge leak.")
+                    force_fresh = True
+                
+                if not force_fresh:
+                    session_id_to_use = old_data.get("session_id") or old_data.get("sessionId")
+                    if not session_id_to_use:
+                        raise ValueError(f"File {source_path} is not a valid Gemini session")
+                    
+                    # Ensure the file is in the current project's chat dir for the CLI to find it
+                    os.makedirs(cli_dir, exist_ok=True)
+                    target_path = os.path.join(cli_dir, f"session-{session_id_to_use}.json")
+                    if os.path.abspath(source_path) != os.path.abspath(target_path):
+                        shutil.copy2(source_path, target_path)
+            except (json.JSONDecodeError, IOError):
+                pass
+        else:
+            # Fallback to ID if no file found
             session_id_to_use = session_to_resume
 
     if force_fresh:
