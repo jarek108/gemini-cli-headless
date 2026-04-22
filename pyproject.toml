@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "gemini-cli-headless"
-version = "5.0.1"
+version = "5.0.2"
 description = "A resilient, zero-dependency Python wrapper for the official Google Gemini Node.js CLI."
 readme = "README.md"
 requires-python = ">=3.9"
@@ -30,6 +30,7 @@ dev = [
 Homepage = "https://github.com/jarek108/gemini-cli-headless"
 Repository = "https://github.com/jarek108/gemini-cli-headless"
 Issues = "https://github.com/jarek108/gemini-cli-headless/issues"
+Documentation = "https://github.com/jarek108/gemini-cli-headless/tree/main/docs"
 
 [tool.pytest.ini_options]
 addopts = "-ra --tb=short"
