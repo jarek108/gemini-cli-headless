@@ -487,7 +487,14 @@ def _execute_single_run(
                 line = process.stdout.readline()
                 if not line: break
                 combined_output_list.append(line)
-                if stream_output: sys.stdout.write(line); sys.stdout.flush()
+                if stream_output:
+                    try:
+                        sys.stdout.write(line)
+                        sys.stdout.flush()
+                    except UnicodeEncodeError:
+                        # Fallback for Windows consoles with limited encodings
+                        sys.stdout.write(line.encode('ascii', 'replace').decode('ascii'))
+                        sys.stdout.flush()
         
         output_thread = threading.Thread(target=read_output)
         output_thread.start()
