@@ -334,11 +334,7 @@ def _execute_single_run(
     if force_fresh:
         session_id_to_use = None
 
-    attachment_strings = []
-    if files:
-        for f_path in files:
-            if os.path.exists(f_path):
-                attachment_strings.append(f" @{os.path.abspath(f_path)}")
+    attachment_strings = [] # Left empty to avoid polluting the prompt text
 
     cmd_executable = shutil.which("gemini")
     if not cmd_executable:
@@ -475,6 +471,12 @@ def _execute_single_run(
             tf.write(full_prompt)
             prompt_path = tf.name
         cmd.append(f"@{prompt_path}")
+
+        # FIX: Append files as distinct CLI arguments so the Gemini CLI natively attaches them
+        if files:
+            for f_path in files:
+                if os.path.exists(f_path):
+                    cmd.append(f"@{os.path.abspath(f_path)}")
 
         process = subprocess.Popen(
             cmd, cwd=cwd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,

@@ -106,7 +106,8 @@ class IntegrationTestMonitor:
         progress = (self.passed + self.model_failed + self.engine_failed) / (active_tests or 1)
         bar_len = 40
         filled = int(bar_len * progress)
-        bar = f"{G}{'█' * filled}{D}{'░' * (bar_len - filled)}{RESET}"
+        # Use simple ASCII characters to prevent charmap errors on Windows cp1252
+        bar = f"{G}{'#' * filled}{D}{'-' * (bar_len - filled)}{RESET}"
 
         print(f"{C}{B}GEMINI-CLI-HEADLESS INTEGRATION TEST BATTERY{RESET}")
         print(f"{D}Session: {self.run_id} | Model: {self.model_id}{RESET}")
@@ -174,7 +175,7 @@ def setup_fresh_workspace(test_id):
     os.makedirs(os.path.join(ws, "ok"))
     os.makedirs(os.path.join(ws, "read_only"))
     os.makedirs(os.path.join(ws, "nested/a/b/c"), exist_ok=True)
-    with open(os.path.join(ws, "test.txt"), "w") as f: f.write("This is a standard file.")
+    with open(os.path.join(ws, "test.txt"), "w") as f: f.write("This is a standard file. SECRET_WORD_IS_BANANA")
     with open(os.path.join(ws, "secret.txt"), "w") as f: f.write("PRIVATE_KEY_12345")
     with open(os.path.join(ws, "ok/allowed.txt"), "w") as f: f.write("Access granted.")
     with open(os.path.join(ws, "nested/a/b/c/file.txt"), "w") as f: f.write("Deep content.")
@@ -271,7 +272,7 @@ if __name__ == "__main__":
         ("res_timeout_enforcement", f"Run '{SLEEP_COMMAND}'", {"allowed_tools": ["run_shell_command"], "allowed_commands": [SHELL_PREFIX], "timeout": 2}),
         ("res_graceful_api_fail", "Hello", {"allowed_tools": ["*"]}),
         ("ctx_attach_missing_file", "Hello", {"allowed_tools": [], "allowed_paths": ["{ws_norm}"], "files": ["non_existent.txt"]}),
-        ("ctx_attach_without_tools", "Analyze the file 'test.txt' provided in context.", {"allowed_tools": [], "allowed_paths": ["{ws_norm}"], "files": ["{ws_norm}/test.txt"]}),
+        ("ctx_attach_without_tools", "Analyze the file 'test.txt' provided in context and repeat the SECRET_WORD found inside.", {"allowed_tools": [], "allowed_paths": ["{ws_norm}"], "files": ["{ws_norm}/test.txt"]}),
         ("state_session_persistence", "Complex state check", {}),
         ("state_file_flush_verification", "Atomic Write Check", {}),
         ("state_knowledge_invalidation", "Cache Invalidation Check", {}),
@@ -417,6 +418,12 @@ if __name__ == "__main__":
                     monitor.update_stats(session)
                 
                 status = "PASSED" if not err else "ENGINE FAIL"
+                
+                if status == "PASSED" and c["name"] == "ctx_attach_without_tools":
+                    if "SECRET_WORD_IS_BANANA" not in session.text:
+                        status = "MODEL FAIL"
+                        err = "Model hallucinated file contents instead of reading native attachment."
+
                 monitor.update_test(c["name"], status, err, time.time() - start, attempts=attempts)
                 break
 
