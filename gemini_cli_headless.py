@@ -478,7 +478,7 @@ def _execute_single_run(
 
         process = subprocess.Popen(
             cmd, cwd=cwd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-            text=True, encoding='utf-8', bufsize=1
+            text=True, encoding='utf-8', bufsize=1, errors='replace'
         )
 
         combined_output_list = []
