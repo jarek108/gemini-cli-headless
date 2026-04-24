@@ -13,6 +13,12 @@ Ensure your `GEMINI_API_KEY` is exported in your environment, then run:
 python tests/run_integration_tests.py gemini-3-flash-preview
 ```
 
+**Keyless unit tests:**
+The unit tests at the top of `tests/` run without a `GEMINI_API_KEY` (they mock the subprocess). Use them for fast local iteration:
+```bash
+pytest tests/test_auth_mode.py tests/test_quota_greedy_fix.py
+```
+
 **Expected Output:**
 When running the tests, you should expect a live-updating dashboard providing a system snapshot, execution hierarchy, and real-time progress of the active test battery:
 

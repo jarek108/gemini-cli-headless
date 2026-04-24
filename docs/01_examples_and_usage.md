@@ -4,7 +4,7 @@
 
 ## Basic Usage
 
-**Prerequisite:** Both usage and testing of this library require a valid Google Gemini API key. Ensure it is available in your environment before running any code:
+**Prerequisite:** Usage requires either a valid Google Gemini API key (default) **or** prior `gemini auth login` for OAuth / subscription users (pass `auth_mode="oauth"` — see the README Quick Start). Integration tests (`tests/integration/`) require an API key; unit tests run without one — e.g. `pytest tests/test_auth_mode.py tests/test_quota_greedy_fix.py`. For the default API-key path, ensure it is available in your environment before running any code:
 ```bash
 # Windows
 $env:GEMINI_API_KEY="your-api-key"
@@ -12,7 +12,7 @@ $env:GEMINI_API_KEY="your-api-key"
 # Linux / macOS
 export GEMINI_API_KEY="your-api-key"
 ```
-Alternatively, you can pass it directly to the function using the `api_key` argument. The wrapper will fail with a clear `ValueError` if the key is completely missing.
+Alternatively, you can pass it directly to the function using the `api_key` argument. Under the default `auth_mode="api_key"`, the wrapper will fail with a clear `ValueError` if the key is completely missing; this check is skipped for `auth_mode="oauth"`, in which case the wrapper also strips any inherited `GEMINI_API_KEY` from the subprocess env so the two auth modes don't mix.
 
 To run a simple, unrestricted prompt (Not recommended for autonomous execution):
 

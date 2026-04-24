@@ -76,16 +76,24 @@ def _find_project_root(start_dir: str) -> str:
         current = parent
     return start_dir
 
+def _resolve_real_home_dir() -> str:
+    """Returns the real user home directory, bypassing GEMINI_CLI_HOME entirely.
+
+    On Windows, prefers USERPROFILE but falls through to os.path.expanduser
+    if it is missing OR empty (the `or` guard matters — an empty USERPROFILE
+    would otherwise produce a bogus `/.gemini/tmp` path).
+    """
+    if os.name == "nt":
+        return os.environ.get("USERPROFILE") or os.path.expanduser("~")
+    return os.path.expanduser("~")
+
 def _get_gemini_tmp_root(gemini_home: Optional[str] = None) -> str:
     """Returns the root temporary directory for Gemini sessions, respecting GEMINI_CLI_HOME."""
     if not gemini_home:
         gemini_home = os.environ.get("GEMINI_CLI_HOME")
     if not gemini_home:
-        if os.name == "nt":
-            gemini_home = os.environ.get("USERPROFILE", os.path.expanduser("~"))
-        else:
-            gemini_home = os.path.expanduser("~")
-    
+        gemini_home = _resolve_real_home_dir()
+
     return os.path.join(gemini_home, ".gemini", "tmp")
 
 def _find_session_file(directory: str, session_id: str, tmp_root: Optional[str] = None) -> str:
@@ -160,9 +168,10 @@ def run_gemini_cli_headless(
     stream_output: bool = False,
     # --- Resilience & Auth Params ---
     api_key: Optional[str] = None,
+    auth_mode: str = "api_key",
     max_retries: int = 3,
     retry_delay_seconds: float = 5.0,
-    timeout_seconds: Optional[int] = 300, 
+    timeout_seconds: Optional[int] = 300,
     # --- Security & Scope Controls ---
     allowed_tools: Optional[List[str]] = None,
     allowed_paths: Optional[List[str]] = None,
@@ -175,8 +184,38 @@ def run_gemini_cli_headless(
     """
     Standalone wrapper for the Gemini CLI in headless mode.
     Secured via Tier-4 Sandboxing logic.
+
+    Auth:
+        auth_mode: How the subprocess authenticates with Gemini.
+            - "api_key" (default): the wrapper requires
+              `GEMINI_API_KEY` either in the environment or via the `api_key`
+              kwarg, and raises `ValueError` otherwise. When
+              `isolate_from_hierarchical_pollution=True` the subprocess gets
+              `GEMINI_CLI_HOME=<cwd>` for clean-room isolation.
+            - "oauth": the wrapper does NOT require or set `GEMINI_API_KEY`;
+              it strips any inherited `GEMINI_API_KEY` and `GEMINI_CLI_HOME`
+              from the subprocess so the CLI resolves OAuth credentials from
+              the real home (`~/.gemini/oauth_creds.json`, as produced by
+              `gemini auth login`). The rest of the isolation (project tmp
+              dir, `GEMINI_PROJECT`, and `GEMINI_SYSTEM_MD` when
+              `system_instruction_override` is provided) still applies.
+            Any other value raises `ValueError`. Passing `auth_mode="oauth"`
+            together with `api_key=...` is a conflict and also raises
+            `ValueError` (no silent drop).
     """
-    
+
+    # Validate auth_mode up-front so bad values fail fast before any retries.
+    if auth_mode not in ("api_key", "oauth"):
+        raise ValueError(
+            f"Invalid auth_mode={auth_mode!r}. Expected 'api_key' or 'oauth'."
+        )
+    if auth_mode == "oauth" and api_key:
+        raise ValueError(
+            "auth_mode='oauth' is incompatible with api_key=... "
+            "Pick one: either pass api_key (and leave auth_mode='api_key') "
+            "or use OAuth creds from `gemini auth login` (auth_mode='oauth')."
+        )
+
     # Python-level path security for attachments
     if allowed_paths is not None and allowed_paths != ["*"]:
         logger.warning(
@@ -225,6 +264,7 @@ def run_gemini_cli_headless(
                 extra_args=extra_args,
                 stream_output=stream_output,
                 api_key=api_key,
+                auth_mode=auth_mode,
                 allowed_tools=allowed_tools,
                 allowed_paths=allowed_paths,
                 allowed_commands=allowed_commands,
@@ -269,6 +309,7 @@ def _execute_single_run(
     extra_args: Optional[List[str]] = None,
     stream_output: bool = False,
     api_key: Optional[str] = None,
+    auth_mode: str = "api_key",
     allowed_tools: Optional[List[str]] = None,
     allowed_paths: Optional[List[str]] = None,
     allowed_commands: Optional[List[str]] = None,
@@ -279,7 +320,20 @@ def _execute_single_run(
     force_fresh: bool = False
 ) -> GeminiSession:
     """Internal execution logic for a single CLI invocation."""
-    
+
+    # Mirror the entry-point validation so direct callers of _execute_single_run
+    # get the same fast-fail semantics as run_gemini_cli_headless().
+    if auth_mode not in ("api_key", "oauth"):
+        raise ValueError(
+            f"Invalid auth_mode={auth_mode!r}. Expected 'api_key' or 'oauth'."
+        )
+    if auth_mode == "oauth" and api_key:
+        raise ValueError(
+            "auth_mode='oauth' is incompatible with api_key=... "
+            "Pick one: either pass api_key (and leave auth_mode='api_key') "
+            "or use OAuth creds from `gemini auth login` (auth_mode='oauth')."
+        )
+
     effective_cwd = cwd if cwd else os.getcwd()
     
     # 1. PROJECT NAME & ROOT RESOLUTION
@@ -288,7 +342,14 @@ def _execute_single_run(
         project_name = _sanitize_project_name(os.path.basename(resolved_root))
 
     # 2. SURGICAL ISOLATION (GEMINI_CLI_HOME trick)
-    gemini_home_override = effective_cwd if isolate_from_hierarchical_pollution else None
+    # Force home-dir resolution to mirror the env-stripped subprocess, regardless
+    # of inherited GEMINI_CLI_HOME, to ensure session-file lookups hit the right directory.
+    if auth_mode == "oauth":
+        gemini_home_override = _resolve_real_home_dir()
+    elif isolate_from_hierarchical_pollution:
+        gemini_home_override = effective_cwd
+    else:
+        gemini_home_override = None
     tmp_root = _get_gemini_tmp_root(gemini_home_override)
 
     session_id_to_use = session_id
@@ -356,10 +417,30 @@ def _execute_single_run(
     env["PYTHONUNBUFFERED"] = "1"
     env["GEMINI_PROJECT"] = project_name
     
-    if api_key:
-        env["GEMINI_API_KEY"] = api_key
-    elif not env.get("GEMINI_API_KEY"):
-        raise ValueError("GEMINI_API_KEY is missing.")
+    if auth_mode == "oauth":
+        # OAuth path: the CLI resolves creds from ~/.gemini/oauth_creds.json.
+        # Strip any inherited GEMINI_API_KEY so the two auth modes don't mix
+        # at the subprocess level (api-key in env would silently win over OAuth).
+        env.pop("GEMINI_API_KEY", None)
+        # Also strip any GEMINI_CLI_HOME the user may have exported in their
+        # shell — with it set, the CLI would look for oauth_creds.json under
+        # $GEMINI_CLI_HOME/.gemini/ instead of ~/.gemini/ and fail auth.
+        # Read-and-strip in one step. Reading from `env` (not os.environ)
+        # keeps this correct if any earlier code in this function mutates
+        # the subprocess env dict; using pop's return value avoids the
+        # double-lookup of get-then-pop.
+        inherited_cli_home = env.pop("GEMINI_CLI_HOME", None)
+        if inherited_cli_home is not None:
+            logger.info(
+                "auth_mode='oauth': stripped inherited GEMINI_CLI_HOME=%s "
+                "from subprocess env (would break OAuth cred resolution)",
+                inherited_cli_home,
+            )
+    else:
+        if api_key:
+            env["GEMINI_API_KEY"] = api_key
+        elif not env.get("GEMINI_API_KEY"):
+            raise ValueError("GEMINI_API_KEY is missing.")
 
     try:
         # Create temp_dir inside CWD for CLI sandbox compatibility
@@ -375,7 +456,20 @@ def _execute_single_run(
         if isolate_from_hierarchical_pollution:
             gemini_home_path = os.path.join(effective_cwd, ".gemini")
             gemini_home_existed = os.path.exists(gemini_home_path)
-            env["GEMINI_CLI_HOME"] = effective_cwd
+            if auth_mode != "oauth":
+                env["GEMINI_CLI_HOME"] = effective_cwd
+            else:
+                active_isolations = ["GEMINI_PROJECT"]
+                if system_instruction_override:
+                    active_isolations.append("GEMINI_SYSTEM_MD")
+                active_isolations.append("tmp-dir")
+                logger.info(
+                    "auth_mode='oauth': skipping GEMINI_CLI_HOME=%s isolation "
+                    "override to preserve OAuth cred resolution. Other "
+                    "isolations (%s) remain active.",
+                    effective_cwd,
+                    ", ".join(active_isolations),
+                )
 
         # 1. Environment Anchoring (Additive Strategy)
         profile_parts = []
